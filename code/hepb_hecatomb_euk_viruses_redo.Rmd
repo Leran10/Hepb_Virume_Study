@@ -1,0 +1,3794 @@
+---
+title: "Hepb_hecatomb_euk_viruses_redo"
+author: "Leran Wang"
+date: "7/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Libraries
+#install.packages("tidyverse")
+library(ggplot2)
+library("tidyverse"); packageVersion("tidyverse")
+#install.packages("ggpubr")
+library("ggpubr"); packageVersion("ggpubr")
+library("phyloseq"); packageVersion("phyloseq")
+install.packages("plotly")
+library("plotly"); packageVersion("plotly")
+install.packages("remotes")
+remotes::install_github("mikemc/speedyseq")
+library("speedyseq"); packageVersion("speedyseq")
+library("data.table"); packageVersion("data.table")
+install.packages("tidylog")
+library("tidylog"); packageVersion("tidylog")
+library("glue"); packageVersion("glue")
+library("ggrepel"); packageVersion("ggrepel")
+library("forcats")
+install.packages("rstatix")
+library("rstatix")
+install.packages("car")
+install.packages('DiagrammeR')
+library("DiagrammeR")
+install.packages("ggraph")
+library("ggraph")
+install.packages("igraph")
+library("igraph")
+library("gridExtra")
+install.packages("janitor")
+library("janitor")
+library("DESeq2")
+# Global settings
+theme_set(theme_bw())
+options(scipen=999)
+library(cowplot)
+library(grid)
+install.packages("randomForest")
+library("randomForest")
+library(lattice)
+library(rstatix)
+
+install.packages("pbkrtest")
+
+```
+
+
+## Import Data
+```{r}
+
+# Raw Counts
+ps.euk.species <- readRDS("~/Handley lab Dropbox/virome/HepB/results/ps0_euk_viruses_species.RDS")
+ps.euk.genus <- readRDS("~/Handley lab Dropbox/virome/HepB/results/ps0_euk_viruses_genus.RDS")
+ps.euk.family <- readRDS("~/Handley lab Dropbox/virome/HepB/results/ps0_euk_viruses_family.RDS")
+
+# Standardized
+ps.euk.species.stand <- readRDS("~/Handley lab Dropbox/virome/HepB/results/ps0_euk_viruses_standardized_species.RDS")
+ps.euk.genus.stand <- readRDS("~/Handley lab Dropbox/virome/HepB/results/ps0_euk_viruses_standardized_genus.RDS")
+ps.euk.family.stand <- readRDS("~/Handley lab Dropbox/virome/HepB/results/ps0_euk_viruses_standardized_family.RDS")
+
+
+
+# Alignments
+ps.aln <- readRDS("~/Handley lab Dropbox/virome/HepB/results/aln_euk_viruses_filt.RDS")
+
+# Import mapping file
+MAP <- import_qiime_sample_data("~/Handley lab Dropbox/virome/HepB/results/mapping_SAHedits.txt")
+
+```
+
+
+
+# For Random Forest, splite data into All, plant and non-plant
+```{r}
+
+# All
+All <- ps.euk.species 
+
+
+# plant virus
+plant.virus <- c("Virgaviridae","Betaflexiviridae","Potyviridae","Closteroviridae","Genomoviridae","Luteoviridae")
+subset.plant <- All %>% 
+                subset_taxa(Family %in% plant.virus)
+
+
+# non-plant virus
+virus <- c("Astroviridae","Picornaviridae","Smacoviridae","Adenoviridae","Dicistroviridae","Picobirnaviridae",
+                     "Circoviridae","Parvoviridae","Caliciviridae","Anelloviridae","Flaviviridae")
+subset.nonPlant <- All %>% 
+                   subset_taxa(Family %in% virus)
+
+```
+
+
+
+# community composition plot
+```{r}
+
+ps1 <- ps.euk.species %>%
+      tax_glom(taxrank = "Family") %>%
+      subset_samples(timeLabel == "D0" & Cohort == "Fisherman") %>%
+      subset_taxa(Family %in% c(plant.virus,virus)) %>%
+      #transform_sample_counts(function(x) {x/sum(x)}) %>%
+      psmelt() %>%
+      select(c(1:27)) %>%
+      mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) 
+
+View(ps1[ps1$Sample.ID == "I7539",c("Abundance","type")])
+
+p.1 <- ggplot(ps1, aes(x = Sample.ID, y = Abundance, fill = type)) +
+      geom_bar(stat = "identity", width = 0.9) +
+      #scale_color_brewer(palette = "Paired")+
+      labs(title = "D0 Fisherman",y="Relative Abundance", x= "Sample ID") +
+      #facet_wrap(~timeLabel~Cohort) +
+      theme(legend.position = "right",
+            legend.title = element_text(size=8),
+            axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+ps2 <- ps.euk.species %>%
+      tax_glom(taxrank = "Family") %>%
+      subset_samples(timeLabel == "D0" & Cohort == "Kampala") %>%
+      subset_taxa(Family %in% c(plant.virus,virus)) %>%
+      transform_sample_counts(function(x) {x/sum(x)}) %>%
+      psmelt() %>%
+      select(c(1:27)) %>%
+      mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) 
+      
+
+
+p.2 <- ggplot(ps2, aes(x = Sample.ID, y = Abundance, fill = type)) +
+      geom_bar(stat = "identity", width = 0.9) +
+      #scale_color_brewer(palette = "Paired")+
+      labs(title = "D0 Kampala",y="Relative Abundance", x= "Sample ID") +
+      #facet_wrap(~timeLabel~Cohort) +
+      theme(legend.position = "right",
+            legend.title = element_text(size=8),
+            axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+ps3 <- ps.euk.species %>%
+      tax_glom(taxrank = "Family") %>%
+      subset_samples(timeLabel == "D365" & Cohort == "Fisherman") %>%
+      subset_taxa(Family %in% c(plant.virus,virus)) %>%
+      transform_sample_counts(function(x) {x/sum(x)}) %>%
+      psmelt() %>%
+      select(c(1:27)) %>%
+      mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) 
+      
+
+
+p.3 <- ggplot(ps3, aes(x = Sample.ID, y = Abundance, fill = type)) +
+      geom_bar(stat = "identity", width = 0.9) +
+      #scale_color_brewer(palette = "Paired")+
+      labs(title = "D365 Fisherman",y="Relative Abundance", x= "Sample ID") +
+      #facet_wrap(~timeLabel~Cohort) +
+      theme(legend.position = "right",
+            legend.title = element_text(size=8),
+            axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+ps4 <- ps.euk.species %>%
+      tax_glom(taxrank = "Family") %>%
+      subset_samples(timeLabel == "D365" & Cohort == "Kampala") %>%
+      subset_taxa(Family %in% c(plant.virus,virus)) %>%
+      transform_sample_counts(function(x) {x/sum(x)}) %>%
+      psmelt() %>%
+      select(c(1:27)) %>%
+      mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) 
+  
+   
+
+
+p.4 <- ggplot(ps4, aes(x = Sample.ID, y = Abundance, fill = type)) +
+      geom_bar(stat = "identity", width = 0.9) +
+      #scale_color_brewer(palette = "Paired")+
+      labs(title = "D365 Kampala",y="Relative Abundance", x= "Sample ID") +
+      #facet_wrap(~timeLabel~Cohort) +
+      theme(legend.position = "right",
+            legend.title = element_text(size=8),
+            axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+View(ps4[ps4$Sample.ID == "I5944",])
+
+
+ggarrange(p.1,p.2,p.3,p.4,common.legend = TRUE)
+
+# ---------------------------------------------#
+# check
+# 5866 5869
+
+check <- ps.aln %>%
+         subset(Family %in% c(plant.virus,virus))
+
+
+I5869 <- check %>%
+         subset(Sample.ID == "I5869") %>%
+         select(Family) %>%
+         deframe() %>%
+         unique()
+
+I5869 %in% virus
+
+I5866 <- check %>%
+         subset(Sample.ID == "I5866") %>%
+         select(Family) %>%
+         deframe() %>%
+         unique()
+
+
+I5866 %in% virus
+
+```
+
+
+# count bar plot
+```{r}
+
+## D0 Fisherman
+# row counts
+ps1.raw <- ps.euk.species %>%
+            tax_glom(taxrank = "Family") %>%
+            subset_samples(timeLabel == "D0" & Cohort == "Fisherman") %>%
+            subset_taxa(Family %in% c(plant.virus,virus)) %>%
+            psmelt() %>%
+            select(c(1:27)) %>%
+            mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+           group_by(Sample.ID,type) %>%
+           summarise(sum(Abundance)) %>%
+           rename("count" = `sum(Abundance)`)
+
+
+# raw plot
+p1.raw <- ggplot(data=ps1.raw, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          labs(title = "D0 Fisherman (raw)")+
+          scale_y_log10()
+
+          
+# standardized
+ps1.stand <- ps.euk.species.stand %>%
+             filter(Family %in% c(plant.virus,virus)) %>%
+             filter(timeLabel == "D0" & Cohort == "Fisherman") %>%
+             select(c(1:27),scaled_abundance_median) %>%
+             mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+             group_by(Sample.ID,type) %>%
+             summarise(sum(scaled_abundance_median)) %>%
+             rename("count" = `sum(scaled_abundance_median)`)
+             
+ 
+# standardized plot
+p1.stand <- ggplot(data=ps1.stand, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+          labs(title = "D0 Fisherman (standardized)") +
+          scale_y_log10()
+
+
+        
+## D365 Fisherman
+# row counts
+ps2.raw <- ps.euk.species %>%
+            tax_glom(taxrank = "Family") %>%
+            subset_samples(timeLabel == "D365" & Cohort == "Fisherman") %>%
+            subset_taxa(Family %in% c(plant.virus,virus)) %>%
+            psmelt() %>%
+            select(c(1:27)) %>%
+            mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+           group_by(Sample.ID,type) %>%
+           summarise(sum(Abundance)) %>%
+           rename("count" = `sum(Abundance)`)
+
+
+# raw plot
+p2.raw <- ggplot(data=ps2.raw, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          labs(title = "D365 Fisherman (raw)") +
+          scale_y_log10()
+
+p2.raw          
+          
+          
+# standardized
+ps2.stand <- ps.euk.species.stand %>%
+             filter(Family %in% c(plant.virus,virus)) %>%
+             filter(timeLabel == "D365" & Cohort == "Fisherman") %>%
+             select(c(1:27),scaled_abundance_median) %>%
+             mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+             group_by(Sample.ID,type) %>%
+             summarise(sum(scaled_abundance_median)) %>%
+             rename("count" = `sum(scaled_abundance_median)`)
+             
+ 
+# standardized plot
+p2.stand <- ggplot(data=ps2.stand, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+          labs(title = "D365 Fisherman (standardized)") +
+          scale_y_log10()
+
+
+#ggarrange(p2.raw,p2.stand,common.legend = TRUE)
+
+
+## D0 Kampala
+# raw counts
+ps3.raw <- ps.euk.species %>%
+            tax_glom(taxrank = "Family") %>%
+            subset_samples(timeLabel == "D0" & Cohort == "Kampala") %>%
+            subset_taxa(Family %in% c(plant.virus,virus)) %>%
+            psmelt() %>%
+            select(c(1:27)) %>%
+            mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+           group_by(Sample.ID,type) %>%
+           summarise(sum(Abundance)) %>%
+           rename("count" = `sum(Abundance)`)
+
+
+# raw plot
+p3.raw <- ggplot(data=ps3.raw, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          labs(title = "D0 Kampala (raw)") +
+          scale_y_log10()
+
+          
+# standardized
+ps3.stand <- ps.euk.species.stand %>%
+             filter(Family %in% c(plant.virus,virus)) %>%
+             filter(timeLabel == "D0" & Cohort == "Kampala") %>%
+             select(c(1:27),scaled_abundance_median) %>%
+             mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+             group_by(Sample.ID,type) %>%
+             summarise(sum(scaled_abundance_median)) %>%
+             rename("count" = `sum(scaled_abundance_median)`)
+             
+ 
+# standardized plot
+p3.stand <- ggplot(data=ps3.stand, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+          labs(title = "D0 Kampala (standardized)") +
+          scale_y_log10()
+
+
+ggarrange(p3.raw,p3.stand,common.legend = TRUE)
+
+
+## D365 Kampala
+# raw counts
+ps4.raw <- ps.euk.species %>%
+            tax_glom(taxrank = "Family") %>%
+            subset_samples(timeLabel == "D365" & Cohort == "Kampala") %>%
+            subset_taxa(Family %in% c(plant.virus,virus)) %>%
+            psmelt() %>%
+            select(c(1:27)) %>%
+            mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+           group_by(Sample.ID,type) %>%
+           summarise(sum(Abundance)) %>%
+           rename("count" = `sum(Abundance)`)
+
+
+# raw plot
+p4.raw <- ggplot(data=ps4.raw, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          labs(title = "D365 Kampala (raw)")+
+          scale_y_log10()
+
+          
+# standardized
+ps4.stand <- ps.euk.species.stand %>%
+             filter(Family %in% c(plant.virus,virus)) %>%
+             filter(timeLabel == "D365" & Cohort == "Kampala") %>%
+             select(c(1:27),scaled_abundance_median) %>%
+             mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+             group_by(Sample.ID,type) %>%
+             summarise(sum(scaled_abundance_median)) %>%
+             rename("count" = `sum(scaled_abundance_median)`)
+             
+ 
+# standardized plot
+p4.stand <- ggplot(data=ps4.stand, aes(x = Sample.ID, y = count, fill = type)) +
+          geom_bar(stat="identity", width=0.6, position=position_dodge()) + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+          labs(title = "D365 Kampala (standardized)") +
+          scale_y_log10()
+
+
+ggarrange(p4.raw,p4.stand,common.legend = TRUE)
+
+ggarrange(p1.raw,p1.stand,p2.raw,p2.stand,p3.raw,p3.stand,p4.raw,p4.stand, nrow = 4, ncol = 2, common.legend = TRUE,legend = "bottom")
+
+
+
+
+```
+
+
+
+```{r}
+
+
+## D0 Fisherman
+# row counts
+ps1.raw <- ps.euk.species %>%
+            tax_glom(taxrank = "Family") %>%
+            subset_samples(timeLabel %in% c("D0","D365")) %>%
+            subset_taxa(Family %in% c(plant.virus,virus)) %>%
+            psmelt() %>%
+            select(c(1:27)) %>%
+            mutate("type" = ifelse(Family %in% plant.virus,"Plant","Non-plant")) %>%
+            select(Sample.ID,Abundance,type,Cohort,timeLabel) %>%
+            group_by(Sample.ID,type) %>%
+            mutate(count = sum(Abundance)) %>%
+            ungroup() 
+ps1.raw
+
+temp <- ps1.raw %>%
+        unite(new, c(Sample.ID,type,timeLabel,Cohort),sep = "_",remove = FALSE) %>%
+        group_by(new) %>%
+        mutate(count = count) 
+       
+temp <- temp[!duplicated(temp$new),]
+
+temp
+
+
+
+p <- ggplot(temp,aes(type, count)) +
+   #geom_bar(stat="identity", width=0.6, position=position_dodge())+
+   #geom_boxplot() + 
+   geom_jitter(width = 0.3) +
+   facet_wrap(~timeLabel ~ Cohort) + 
+   scale_y_log10()
+  
+
+p <- add_summary(p,fun = "mean_se",color = "red",size = 0.4)
+
+p
+stats <- temp %>%
+                 mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) %>%
+                 unite(joined,c(timeLabel,Cohort),sep = "_") %>%
+                 group_by(joined) %>%
+                  wilcox_test(count ~ type) %>%
+                 adjust_pvalue(method = "holm") %>%
+                 add_significance() %>%
+                 arrange(p.adj)
+
+stats  
+```
+
+
+# D0-Kampala vs Fisherman Random Forest
+## Plant
+```{r}
+
+otu <- t(data.frame(otu_table(subset.plant)))
+
+sample <- data.frame(sample_data(subset.plant))
+
+df <- cbind(otu,sample)
+
+
+# D0 kampala
+df.D0 <- df %>%
+             subset(timeLabel == "D0") %>%
+             select(c(1:258),"Cohort") %>%
+             droplevels()
+
+
+
+# random forest
+rf_all <- randomForest(Cohort ~ .,data = df.D0,importance = TRUE)
+varImpPlot(rf_all,type=1,bg = "skyblue")  
+
+
+imp <- importance(rf_all, class = NULL, scale = TRUE, type = 1)
+
+# get the feature importance
+imp <- data.frame(imp) %>%
+       rownames_to_column("OTU") %>%
+       arrange(-MeanDecreaseAccuracy)
+
+
+
+# get the taxa ID
+taxId <- imp$OTU[1:30]
+
+# get the tax names
+tax.name <- tax_table(ps.euk.species) %>%
+            subset(rownames(tax_table(ps.euk.species)) %in% taxId) %>%
+            as.data.frame(.) %>%
+            select(1:7) %>%
+            unite("name",Family,Genus,Species,sep = "_") %>%
+            rownames_to_column("OTU") #%>%
+            #left_join(imp[c(1:30),])
+
+
+
+tax.name <- tax.name[match(taxId, tax.name$OTU),]
+
+
+tax.final <- left_join(tax.name,imp[c(1:30),])
+
+
+feature_importance <- ggplot(tax.final,aes(x = MeanDecreaseAccuracy,y = reorder(name,MeanDecreaseAccuracy))) +
+                    geom_point(color = "firebrick") + 
+                   # scale_x_log10() +
+                    #geom_vline(xintercept = 10,colour="blue", linetype = "longdash") +
+                    labs(y = "Family",title = "D0 Kampala vs Fisherman (Plant)")
+
+feature_importance
+
+
+```
+
+
+
+# ground truth plot
+```{r}
+
+subset.plant.all <- subset.plant %>%
+                    subset_taxa(taxa_names(subset.plant) %in% taxId) %>%
+                    speedyseq::psmelt() %>%
+                    left_join(tax.final) %>%
+                    mutate(Species = fct_reorder(Species, MeanDecreaseAccuracy, .desc = TRUE)) %>%
+left_join(ps.euk.species.stand[!duplicated(ps.euk.species.stand$OTU),c('OTU','scaled_abundance_median')],by = "OTU")
+
+                    
+
+df.D0 <- subset.plant.all %>%
+         subset(timeLabel == "D0")
+
+
+gp <- ggplot(df.D0,aes(x = Cohort,y = Abundance)) +
+      geom_boxplot() +
+      geom_jitter(width = 0.3) +
+      scale_y_log10() + 
+      facet_wrap(~Species~Family) +
+      labs(x = "") +
+      theme(axis.text.x = element_text(angle = 90))
+
+
+add_summary(data = subset(subset.plant.all,timeLabel == "D0"), gp, "mean_sd", color = "red", size = 0.4)
+
+
+```
+
+
+# D365-Kampala vs Fisherman Random Forest
+## Plant
+```{r}
+
+otu <- t(data.frame(otu_table(subset.plant)))
+
+sample <- data.frame(sample_data(subset.plant))
+
+df <- cbind(otu,sample)
+
+
+# D0 kampala
+df.D365 <- df %>%
+             subset(timeLabel == "D365") %>%
+             select(c(1:258),"Cohort") %>%
+             droplevels()
+
+
+
+# random forest
+rf_all <- randomForest(Cohort ~ .,data = df.D365,importance = TRUE)
+varImpPlot(rf_all,type=1,bg = "skyblue")  
+
+
+imp <- importance(rf_all, class = NULL, scale = TRUE, type = 1)
+
+# get the feature importance
+imp <- data.frame(imp) %>%
+       rownames_to_column("OTU") %>%
+       arrange(-MeanDecreaseAccuracy)
+
+# get the taxa ID
+taxId <- imp$OTU[1:30]
+
+
+# get the tax names
+tax.name <- tax_table(ps.euk.species) %>%
+            subset(rownames(tax_table(ps.euk.species)) %in% taxId) %>%
+            as.data.frame(.) %>%
+            select(1:7) %>%
+            unite("name",Family,Genus,Species,sep = "_") %>%
+            rownames_to_column("OTU") #%>%
+            #left_join(imp[c(1:30),])
+
+tax.name <- tax.name[match(taxId, tax.name$OTU),]
+
+
+tax.final <- left_join(tax.name,imp[c(1:30),])
+tax.final
+
+feature_importance <- ggplot(tax.final,aes(x = MeanDecreaseAccuracy,y = reorder(name,MeanDecreaseAccuracy))) +
+                    geom_point(color = "firebrick") + 
+                   # scale_x_log10() +
+                    #geom_vline(xintercept = 10,colour="blue", linetype = "longdash") +
+                    labs(y = "Family",title = "D365 Kampala vs Fisherman (Plant)")
+
+feature_importance
+
+
+```
+
+
+# ground truth plot
+```{r}
+
+subset.plant.all <- subset.plant %>%
+                    subset_taxa(taxa_names(subset.plant) %in% taxId) %>%
+                    speedyseq::psmelt() %>%
+                    left_join(tax.final) %>%
+                    mutate(Species = fct_reorder(Species, MeanDecreaseAccuracy, .desc = TRUE)) 
+
+
+
+df.D365 <- subset.plant.all %>%
+         subset(timeLabel == "D365")
+
+
+gp <- ggplot(df.D365,aes(x = Cohort,y = Abundance)) +
+      geom_boxplot() +
+      geom_jitter(width = 0.3) +
+      scale_y_log10() + 
+      facet_wrap(~Species~Family) +
+      labs(x = "") +
+      theme(axis.text.x = element_text(angle = 90))
+
+
+add_summary(data = subset(subset.plant.all,timeLabel == "D365"), gp, "mean_sd", color = "red", size = 0.4)
+
+
+```
+
+
+
+
+
+# D0-Kampala vs Fisherman Random Forest
+## non-Plant
+```{r}
+
+otu <- t(data.frame(otu_table(subset.nonPlant)))
+
+sample <- data.frame(sample_data(subset.nonPlant))
+
+df <- cbind(otu,sample)
+
+
+# D0 kampala
+df.D0 <- df %>%
+             subset(timeLabel == "D0") %>%
+             select(c(1:579),"Cohort") %>%
+             droplevels()
+
+
+
+# random forest
+rf_all <- randomForest(Cohort ~ .,data = df.D0,importance = TRUE)
+varImpPlot(rf_all,type=1,bg = "skyblue")  
+
+
+imp <- importance(rf_all, class = NULL, scale = TRUE, type = 1)
+
+# get the feature importance
+imp <- data.frame(imp) %>%
+       rownames_to_column("taxID") %>%
+       arrange(-MeanDecreaseAccuracy)
+
+# get the taxa ID
+taxId <- imp$taxID[1:30]
+
+
+# get the tax names
+tax.name <- tax_table(ps.euk.species) %>%
+            subset(rownames(tax_table(ps.euk.species)) %in% taxId) %>%
+            as.data.frame(.) %>%
+            select(1:7) %>%
+            unite("name",Family,Genus,Species,sep = "_") %>%
+            rownames_to_column("taxID") #%>%
+            #left_join(imp[c(1:30),])
+
+tax.name <- tax.name[match(taxId, tax.name$taxID),]
+
+tax.final <- left_join(tax.name,imp[c(1:30),])
+tax.final
+
+feature_importance <- ggplot(tax.final,aes(x = MeanDecreaseAccuracy,y = reorder(name,MeanDecreaseAccuracy)))+
+                    geom_point(color = "firebrick") + 
+                   # scale_x_log10() +
+                    #geom_vline(xintercept = 10,colour="blue", linetype = "longdash") +
+                    labs(y = "Family",title = "D0 Kampala vs Fisherman (non-Plant)")
+
+feature_importance
+
+
+```
+
+
+# D365-Kampala vs Fisherman Random Forest
+## non-Plant
+```{r}
+
+otu <- t(data.frame(otu_table(subset.nonPlant)))
+
+sample <- data.frame(sample_data(subset.nonPlant))
+
+df <- cbind(otu,sample)
+
+
+# D0 kampala
+df.D365 <- df %>%
+             subset(timeLabel == "D365") %>%
+             select(c(1:579),"Cohort") %>%
+             droplevels()
+
+
+
+# random forest
+rf_all <- randomForest(Cohort ~ .,data = df.D365,importance = TRUE)
+varImpPlot(rf_all,type=1,bg = "skyblue")  
+
+
+imp <- importance(rf_all, class = NULL, scale = TRUE, type = 1)
+
+# get the feature importance
+imp <- data.frame(imp) %>%
+       rownames_to_column("taxID") %>%
+       arrange(-MeanDecreaseAccuracy)
+
+# get the taxa ID
+taxId <- imp$taxID[1:30]
+
+
+# get the tax names
+tax.name <- tax_table(ps.euk.species) %>%
+            subset(rownames(tax_table(ps.euk.species)) %in% taxId) %>%
+            as.data.frame(.) %>%
+            select(1:7) %>%
+            unite("name",Family,Genus,Species,sep = "_") %>%
+            rownames_to_column("taxID") #%>%
+            #left_join(imp[c(1:30),])
+
+tax.name <- tax.name[match(taxId, tax.name$taxID),]
+
+tax.final <- left_join(tax.name,imp[c(1:30),])
+tax.final
+
+feature_importance <- ggplot(tax.final,aes(x = MeanDecreaseAccuracy,y = reorder(name,MeanDecreaseAccuracy)))+
+                    geom_point(color = "firebrick") + 
+                   # scale_x_log10() +
+                    #geom_vline(xintercept = 10,colour="blue", linetype = "longdash") +
+                    labs(y = "Family",title = "D365 Kampala vs Fisherman (non-Plant)")
+
+feature_importance
+
+
+```
+
+
+
+## All
+```{r}
+
+otu <- t(data.frame(otu_table(All)))
+
+sample <- data.frame(sample_data(All))
+
+df <- cbind(otu,sample)
+
+
+# D0 kampala
+df.D0 <- df %>%
+             subset(timeLabel == "D0") %>%
+             select(c(1:3241),"Cohort") %>%
+             droplevels()
+
+
+
+# random forest
+rf_all <- randomForest(Cohort ~ .,data = df.D0,importance = TRUE)
+varImpPlot(rf_all,type=1,bg = "skyblue")  
+
+
+imp <- importance(rf_all, class = NULL, scale = TRUE, type = 1)
+
+# get the feature importance
+imp <- data.frame(imp) %>%
+       rownames_to_column("taxID") %>%
+       arrange(-MeanDecreaseAccuracy)
+
+# get the taxa ID
+taxId <- imp$taxID[1:30]
+
+
+# get the tax names
+tax.name <- tax_table(ps.euk.species) %>%
+            subset(rownames(tax_table(ps.euk.species)) %in% taxId) %>%
+            as.data.frame(.) %>%
+            select(1:7) %>%
+            unite("name",Family,Genus,Species,sep = "_") %>%
+            rownames_to_column("taxID") #%>%
+            #left_join(imp[c(1:30),])
+
+tax.name <- tax.name[match(taxId, tax.name$taxID),]
+
+tax.final <- left_join(tax.name,imp[c(1:30),])
+tax.final
+
+feature_importance <- ggplot(tax.final,aes(x = MeanDecreaseAccuracy,y = reorder(name,MeanDecreaseAccuracy)))+
+                    geom_point(color = "firebrick") + 
+                   # scale_x_log10() +
+                    #geom_vline(xintercept = 10,colour="blue", linetype = "longdash") +
+                    labs(y = "Family")
+
+feature_importance
+
+
+```
+
+
+# Random Forest for All dataset D0 Kampala INFECTED
+```{r}
+
+
+otu <- t(data.frame(otu_table(ps.euk.species)))
+
+sample <- data.frame(sample_data(ps.euk.species))
+
+df <- cbind(otu,sample)
+
+
+# D0 kampala
+df.D0.kampala <- df %>%
+                 subset(Cohort == "Kampala" & timeLabel == "D0") %>%
+                 select(c(1:3241),"INFECTED") %>%
+                 drop_na(INFECTED) %>%
+                 subset(INFECTED != "NO?") %>%
+                 droplevels()
+
+
+
+# random forest
+rf_all <- randomForest(INFECTED ~ .,data = df.D0.kampala,importance = TRUE)
+varImpPlot(rf_all,type=1,bg = "skyblue")  
+
+
+imp <- importance(rf_all, class = NULL, scale = TRUE, type = 1)
+
+# get the feature importance
+imp <- data.frame(imp) %>%
+       rownames_to_column("taxID") %>%
+       arrange(-MeanDecreaseAccuracy)
+
+# get the taxa ID
+taxId <- imp$taxID[1:30]
+
+
+# get the tax names
+tax.name <- tax_table(ps.euk.species) %>%
+            subset(rownames(tax_table(ps.euk.species)) %in% taxId) %>%
+            as.data.frame(.) %>%
+            select(1:7) %>%
+            unite("name",Family,Genus,Species,sep = "_") %>%
+            rownames_to_column("taxID") #%>%
+            #left_join(imp[c(1:30),])
+
+tax.name <- tax.name[match(taxId, tax.name$taxID),]
+
+tax.final <- left_join(tax.name,imp[c(1:30),])
+tax.final
+
+feature_importance <- ggplot(tax.final,aes(x = MeanDecreaseAccuracy,y = reorder(name,MeanDecreaseAccuracy)))+
+                    geom_point(color = "firebrick") + 
+                   # scale_x_log10() +
+                    #geom_vline(xintercept = 10,colour="blue", linetype = "longdash") +
+                    labs(y = "Family")
+
+feature_importance
+```
+
+
+## data cleaning for later use
+```{r clean-INFECTED-COHORT-TIMELABEL}
+ps.aln.clean <- ps.aln.enriched %>%
+                filter(INFECTED %in% c("YES","NO")) %>%
+                filter(timeLabel %in% c("D0","D365")) %>%
+                droplevels()
+
+ps.fam.clean <- ps.euk.family.stand %>%
+                 filter(INFECTED %in% c("YES","NO")) %>%
+                 filter(timeLabel %in% c("D0","D365")) %>%
+                 droplevels()
+               
+
+ps.ge.clean <- ps.euk.genus.stand %>%
+               filter(INFECTED %in% c("YES","NO")) %>%
+               filter(timeLabel %in% c("D0","D365")) %>%
+               droplevels()
+
+
+ps.sp.clean <- ps.euk.species.stand %>%
+               filter(INFECTED %in% c("YES","NO")) %>%
+               filter(timeLabel %in% c("D0","D365")) %>%
+               droplevels()
+
+ps0.fam.clean <- ps.euk.family %>%
+               subset_samples(INFECTED %in% c("YES","NO")) %>%
+               subset_samples(timeLabel %in% c("D0","D365")) 
+
+
+
+ps0.ge.clean <- ps.euk.genus %>%
+               subset_samples(INFECTED %in% c("YES","NO")) %>%
+               subset_samples(timeLabel %in% c("D0","D365")) 
+
+
+ps0.sp.clean <- ps.euk.species %>%
+               subset_samples(INFECTED %in% c("YES","NO")) %>%
+               subset_samples(timeLabel %in% c("D0","D365")) 
+
+
+```
+
+
+
+
+## Family analysis
+```{r Family}
+# get the counts summary of each family
+aln.stats.fam <- ps.aln %>%
+                 group_by(Family) %>%
+                 tally(name = "Count") %>%
+                 arrange(-Count)
+
+
+
+glue("Number of viral sequences in entire cohort: {sum(aln.stats.fam$Count)}.")
+
+# diagnostic plot 1
+p.family.diagnos1 <- ggplot(aln.stats.fam,aes(x = Count,y = reorder(Family,Count))) +
+                    geom_point(color = "firebrick") + 
+                    scale_x_log10() +
+                    geom_vline(xintercept = 100,colour="blue", linetype = "longdash") +
+                    labs(y = "Family")
+
+p.family.diagnos1
+
+```
+
+
+
+```{r}
+
+#based on diagnostic plot1 we can filter out the low abundance taxa with the threshold of 100
+count.filt <- 100
+ps.aln.filt <- ps.aln %>%
+               group_by(Family) %>%
+               mutate(count = n()) %>%
+               filter(count > count.filt)%>%
+               droplevels()
+
+
+glue("Original number of fmailies: {length(levels(ps.aln$Family))}
+      remainning number of families: {length(levels(ps.aln.filt$Family))}
+      Difference:{length(levels(ps.aln$Family)) - length(levels(ps.aln.filt$Family))}")
+
+ 
+# diagnostic plot 2
+p.family.diagnos2 <- ggplot(ps.aln.filt,aes(x = alignment_length_adjusted,y = percent_id,color = query_type))+
+                     geom_jitter(width = 0.05, height = 0.05,size = 1,alpha = 0.5) +
+                     geom_hline(aes(yintercept = 0.7), lty = 2, color = "gray") +
+                     geom_vline(aes(xintercept = 150), lty = 2, color = "gray") +
+                     facet_wrap(facets = ~fct_reorder(Family,count,.fun = "median", .desc = TRUE)) +
+                     labs(y = "% ID", x = "Alignment Length",color = "Query Type")
+
+
+p.family.diagnos2
+                     
+```
+
+
+
+
+
+```{r}
+
+family.list <- id.filt.aa$Family
+
+# Remove families dominated by nt alignments (remove those Familes that has nt is majority in high alignment and percent ID area)
+ps.aln.removeNT <- ps.aln.filt %>%
+  filter(Family %in% c("Poxviridae",
+                       "Bromoviridae",
+                       "Preibunyaviridae")) 
+
+                        
+  
+# Filter families with a low percentage of high ID (> 0.7), long (>50) alignments
+id.filt.aa <- ps.aln.filt %>%
+              filter(query_type == "aa") %>%  #only focus on aa
+              select(Family,percent_id,alignment_length) %>%  # select the relevant variables
+              mutate("quadrant" = ifelse(percent_id > 0.7 | alignment_length > 50,"high","low")) %>% # create a column, give each aa a label (high or low)
+              group_by(Family,quadrant) %>% # count the number of each Family-high and Family-low
+              mutate(count = n())  %>%
+              filter(count > 10) %>%  # filter out what ever Family that has abundance lower than 10
+              select(Family,quadrant,count) %>%  # select relavant columns
+              distinct(Family,quadrant,count)%>%
+              arrange(Family)  %>%
+              ungroup() %>%  
+              pivot_wider(names_from = quadrant,values_from = count) %>%
+              mutate(percent = high/low) %>%
+              arrange(-percent) %>%
+              filter(percent > 1) %>%
+              droplevels()
+             
+             
+
+# histogram
+family.hist <- ggplot(id.filt.aa, aes(x = reorder(Family, -percent), y = percent)) +
+                geom_bar(stat = "identity") +
+                theme(axis.text.x = element_text(angle = 90)) +
+                labs(x = "Family")
+
+
+# filter the main table based on family.list
+ps.aln.enriched <- ps.aln.filt %>%
+                   filter(Family %in% family.list) %>%
+                   filter(Family != "unknown") %>%  # always filter out unknown?
+                   filter(Family != "Viruses") %>%  # always filter out viruses?
+                   group_by(Family) %>% 
+                   mutate(count = n()) %>%
+                   droplevels() 
+
+
+## redo the diagnostic plot 2 using the filtered ps.aln table
+p.family.diagnos2.redo <- ggplot(ps.aln.enriched,aes(x = alignment_length_adjusted,y = percent_id,color = Baltimore)) +
+                          geom_jitter(size = 0.7, alpha = 0.3) +
+                          geom_vline(aes(xintercept = 150), lty = 2, color = "gray") +
+                          geom_hline(aes(yintercept = 0.7), lty = 2, color = "gray") +
+                          facet_wrap(facets = ~fct_reorder(Family,count,.fun = "median", .desc = TRUE)) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = "Alignment Length", y = "% ID", color = "Viral Classification") +
+  theme(axis.text = element_text(size = 8)) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  guides(colour = guide_legend(override.aes = list(size=3, alpha = 1)))
+
+
+
+ggarrange(p.family.diagnos1,p.family.diagnos2,p.family.diagnos2.redo)
+
+
+```
+
+# get family list and divide into plant virus and non-plant virus
+```{r}
+
+# get the family names that got kept
+family.list <- id.filt.aa$Family
+
+# plant virus
+plant.virus <- c("Virgaviridae","Betaflexiviridae","Potyviridae","Closteroviridae","Genomoviridae","Luteoviridae")
+
+# non-plant virus
+virus <- c("Astroviridae","Picornaviridae","Smacoviridae","Adenoviridae","Dicistroviridae","Picobirnaviridae",
+                     "Circoviridae","Parvoviridae","Caliciviridae","Anelloviridae","Flaviviridae")
+
+
+```
+
+
+# make final diagnositic plot ----- non-plant virus
+```{r}
+
+# filter the diagnostic plot1 to the famiy that only kept
+aln.stats.fam <- ps.aln %>%
+                 group_by(Family) %>%
+                 add_tally(name = "Count") %>%
+                 ungroup() %>%
+                 arrange(-Count) %>%
+                 filter(Family %in% virus)
+
+
+glue("Number of viral sequences in entire cohort: {sum(aln.stats.fam$Count)}.")
+
+
+# diagnostic plot 1
+p.family.diagnos1 <- ggplot(aln.stats.fam,aes(x = Count,y = reorder(Family,Count),color = Baltimore)) +
+                    geom_point() + 
+                    scale_x_log10() +
+                    labs(y = "Family")
+
+
+
+# virus diagnostic plot2
+ps.aln.enriched.virus <- ps.aln.filt %>%
+                         filter(Family %in% virus) %>%
+                         filter(Family != "unknown") %>%  # always filter out unknown?
+                         filter(Family != "Viruses") %>%  # always filter out viruses?
+                         group_by(Family) %>% 
+                         mutate(count = n()) %>%
+                         droplevels() 
+
+
+## redo the diagnostic plot 2 using the filtered ps.aln table
+p.family.diagnos2.virus.redo <- ggplot(ps.aln.enriched.virus,aes(x = alignment_length_adjusted,y = percent_id,color = Baltimore)) +
+                          geom_jitter(size = 0.7, alpha = 0.3) +
+                          geom_vline(aes(xintercept = 150), lty = 2, color = "gray") +
+                          geom_hline(aes(yintercept = 0.7), lty = 2, color = "gray") +
+                          facet_wrap(facets = ~fct_reorder(Family,count,.fun = "median", .desc = TRUE)) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = "Alignment Length", y = "% ID", color = "Baltimore") +
+  theme(axis.text = element_text(size = 8)) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  guides(colour = guide_legend(override.aes = list(size=3, alpha = 1)))
+
+
+p.family.diagnos2.virus.redo
+
+order.list <- c("Astroviridae","Circoviridae","Picornaviridae","Picobirnaviridae","Smacoviridae","Adenoviridae","Flaviviridae","Parvoviridae","Anelloviridae","Dicistroviridae","Caliciviridae")
+
+
+
+
+# family level overview boxplot (kampala vs fisherman)
+
+
+df.family <-  ps.fam.clean %>%
+              filter(Family %in% virus) %>%
+              group_by(Family) %>%
+              mutate(mean_rank = mean(Abundance)) %>%
+              ungroup()
+
+
+
+df.family.D0 <- df.family %>%
+             subset(timeLabel == "D0")
+
+
+
+df.family.D0$Family <- factor(df.family.D0$Family, levels=order.list)
+
+unique(df.family.D0$Family)
+
+p1 <- ggplot(df.family.D0,aes(x = Cohort,y = log10(scaled_abundance_median),color = Baltimore)) +
+     geom_jitter(width = 0.2) +
+     #facet_wrap(~Family) + 
+     facet_wrap(.~Family) +
+     labs(x = "") +
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+p1 <- add_summary(data = df.family.D0, p1, "mean_sd", color = "black", size = 0.4)
+
+p1
+
+df.stats1 <- df.family.D0 %>%
+                 mutate("log_scaled" = log10(scaled_abundance_median)) %>%
+                 mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) %>%
+                 group_by(Family) %>%
+                 wilcox_test(log_scaled ~ Cohort) %>%
+                 adjust_pvalue(method = "holm") %>%
+                 add_significance() %>%
+                 arrange(p.adj)
+                 
+
+df.stats1
+
+df.family.D365 <- df.family %>%
+             subset(timeLabel == "D365")
+
+df.family.D365$Family <- factor(df.family.D365$Family,levels = order.list)
+
+p2 <- ggplot(df.family.D365,aes(x = Cohort,y = log10(scaled_abundance_median),color = Baltimore)) +
+     geom_jitter(width = 0.2) +
+     #facet_wrap(~Family) +
+     facet_wrap(.~Family) +
+     labs(x = "") +
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+           
+
+p2 <- add_summary(data = df.family.D365, p2, "mean_sd", color = "black", size = 0.4)
+
+
+df.stats2 <- df.family.D365 %>%
+                 mutate("log_scaled" = log10(scaled_abundance_median)) %>%
+                 mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) %>%
+                 group_by(Family) %>%
+                 wilcox_test(log_scaled ~ Cohort) %>%
+                 adjust_pvalue(method = "holm") %>%
+                 add_significance() %>%
+                 arrange(p.adj)
+                 
+
+df.stats2
+  
+p2
+
+
+
+# arrange 4 diagnositic plots together
+
+
+ggarrange(p.family.diagnos1,p.family.diagnos2.virus.redo,p1,p2,ncol = 4,labels = c("A","B","C","D"),common.legend = TRUE)
+
+
+```
+
+
+
+# make final diagnositic plot  ------ plant virus
+```{r}
+
+plant.virus
+
+# filter the diagnostic plot1 to the famiy that only kept
+aln.stats.fam <- ps.aln %>%
+                 group_by(Family) %>%
+                 add_tally(name = "Count") %>%
+                 ungroup() %>%
+                 arrange(-Count) %>%
+                 filter(Family %in% plant.virus)
+
+
+glue("Number of viral sequences in entire cohort: {sum(aln.stats.fam$Count)}.")
+
+
+# diagnostic plot 1
+p.family.diagnos1 <- ggplot(aln.stats.fam,aes(x = Count,y = reorder(Family,Count),color = Baltimore)) +
+                    geom_point() + 
+                    scale_x_log10() +
+                    labs(y = "Family")
+
+
+
+# virus diagnostic plot2
+ps.aln.enriched.plant.virus <- ps.aln.filt %>%
+                         filter(Family %in% plant.virus) %>%
+                         filter(Family != "unknown") %>%  # always filter out unknown?
+                         filter(Family != "Viruses") %>%  # always filter out viruses?
+                         group_by(Family) %>% 
+                         mutate(count = n()) %>%
+                         droplevels() 
+
+
+## redo the diagnostic plot 2 using the filtered ps.aln table
+p.family.diagnos2.plant.virus.redo <- ggplot(ps.aln.enriched.plant.virus,aes(x = alignment_length_adjusted,y = percent_id,color = Baltimore)) +
+                          geom_jitter(size = 0.7, alpha = 0.3) +
+                          geom_vline(aes(xintercept = 150), lty = 2, color = "gray") +
+                          geom_hline(aes(yintercept = 0.7), lty = 2, color = "gray") +
+                          facet_wrap(facets = ~fct_reorder(Family,count,.fun = "median", .desc = TRUE)) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(x = "Alignment Length", y = "% ID", color = "Baltimore") +
+  theme(axis.text = element_text(size = 8)) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  guides(colour = guide_legend(override.aes = list(size=3, alpha = 1)))
+
+
+p.family.diagnos2.plant.virus.redo
+
+#order.list <- c("Astroviridae","Circoviridae","Picornaviridae","Picobirnaviridae","Smacoviridae","Adenoviridae","Flaviviridae","Parvovirida#e","Anelloviridae","Dicistroviridae","Caliciviridae")
+
+
+order.list <- c("Virgaviridae","Betaflexiviridae","Potyviridae","Genomoviridae","Closteroviridae","Luteoviridae")
+
+# family level overview boxplot (kampala vs fisherman)
+
+
+df.family <-  ps.fam.clean %>%
+              filter(Family %in% plant.virus) %>%
+              group_by(Family) %>%
+              mutate(mean_rank = mean(Abundance)) %>%
+              ungroup()
+
+
+
+df.family.D0 <- df.family %>%
+             subset(timeLabel == "D0")
+
+
+
+df.family.D0$Family <- factor(df.family.D0$Family, levels=order.list)
+
+unique(df.family.D0$Family)
+
+p1 <- ggplot(df.family.D0,aes(x = Cohort,y = log10(scaled_abundance_median),color = Baltimore)) +
+     geom_jitter(width = 0.2) +
+     #facet_wrap(~Family) + 
+     facet_wrap(.~Family) +
+     labs(x = "") +
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+p1 <- add_summary(data = df.family.D0, p1, "mean_sd", color = "black", size = 0.4)
+
+p1
+
+df.stats1 <- df.family.D0 %>%
+                 mutate("log_scaled" = log10(scaled_abundance_median)) %>%
+                 mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) %>%
+                 group_by(Family) %>%
+                 wilcox_test(log_scaled ~ Cohort) %>%
+                 adjust_pvalue(method = "holm") %>%
+                 add_significance() %>%
+                 arrange(p.adj)
+                 
+
+df.stats1
+
+df.family.D365 <- df.family %>%
+             subset(timeLabel == "D365")
+
+df.family.D365$Family <- factor(df.family.D365$Family,levels = order.list)
+
+p2 <- ggplot(df.family.D365,aes(x = Cohort,y = log10(scaled_abundance_median),color = Baltimore)) +
+     geom_jitter(width = 0.2) +
+     #facet_wrap(~Family) +
+     facet_wrap(.~Family) +
+     labs(x = "") +
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+           
+
+p2 <- add_summary(data = df.family.D365, p2, "mean_sd", color = "black", size = 0.4)
+
+
+df.stats2 <- df.family.D365 %>%
+                 mutate("log_scaled" = log10(scaled_abundance_median)) %>%
+                 mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) %>%
+                 group_by(Family) %>%
+                 wilcox_test(log_scaled ~ Cohort) %>%
+                 adjust_pvalue(method = "holm") %>%
+                 add_significance() %>%
+                 arrange(p.adj)
+                 
+
+df.stats2
+  
+p2
+
+
+
+# arrange 4 diagnositic plots together
+
+
+ggarrange(p.family.diagnos1,p.family.diagnos2.plant.virus.redo,p1,p2,ncol = 4,labels = c("A","B","C","D"),common.legend = TRUE)
+
+
+p.family.diagnos2.plant.virus.redo
+
+```
+
+
+
+
+## check unknowns: look into the function see if the (done)
+## filter function really work (done)
+## check count filter (why Avastrovirus still there) (done)
+## use wilcox (2 groups comparison) (done)
+## add mean and median into the stats table (done)
+## add another column for "fdr" (done <can directly chosse through parameter>)
+## check functions: geom_hex(), geom_contour().
+## make the hecatomb output to be one table.
+
+## wilcox will throw error if one taxa has all 0s in both of the two groups, dunn's test works but only 
+## show stats for those taxa that not with straight 0s (handled)
+
+
+
+## Explore the virusese one by one
+# Astroviridae genus
+```{r Astroviridae}
+virus
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#-----------------------------------------------------------Genus-----------------------------------------------------#
+
+# get dataframe from the specific Family ---- Astroviridae
+df.Astro <- getFamilyDf(ps.aln.enriched,"Astroviridae","Genus",null,100)
+
+
+keep.genus <- unique(df.Astro$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Astroviridae
+plotDiagnos(df.Astro,"Astroviridae","Genus",c("Genus","Cohort"))
+
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05,TRUE)
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05,TRUE)
+
+## per genus count analysis
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05,FALSE)
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05,FALSE)
+
+# fisherman D0 INFECTED
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05,FALSE)
+# kampala D0 INFECTED
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05,FALSE)
+# fisherman D365 INFECTED
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05,FALSE)
+# kampala D365 INFECTED
+plotStats(df.Astro,ps.ge.clean,"Astroviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05,FALSE)
+
+
+#----------------------------------species------------------------------------------#
+
+# get dataframe from the specific Family ---- Astroviridae
+df.Astro <- getFamilyDf(ps.aln.enriched,"Astroviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Astro$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Astroviridae
+plotDiagnos(df.Astro,"Astroviridae","Species",c("Species","Cohort"))
+
+
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("Cohort" = "Fisherman"),"Species","timeLabel","wilcox.test","holm",0.05,FALSE)
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("Cohort" = "Kampala"),"Species","timeLabel","wilcox.test","holm",0.05,FALSE)
+## per genus count analysis
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05,FALSE)
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05,FALSE)
+# fisherman D0 INFECTED
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05,FALSE)
+# kampala D0 INFECTED
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05,FALSE)
+# fisherman D365 INFECTED
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05,FALSE)
+# kampala D365 INFECTED
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05,FALSE)
+
+
+
+## fisher exact test
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365"),"Astroviridae",keep.genus,keep.species,"Cohort")
+
+df.fisher
+plotFisher(df.fisher,0,FALSE,-0.09,0.1,2)
+
+df.fisher
+write.csv(df.fisher,"~/Downloads/df.fisher1.csv")
+plotFisher(df.fisher,FALSE)
+
+keep.species <- as.character(keep.species)
+keep.species[1] <- "Mamastrovirus.1"
+keep.species[3] <- "Human.astrovirus"
+keep.species
+
+## linear regression on extracted taxa and hepb conteniouse variables
+fitLinear(ps0.sp.clean,keep.species,"Hep.B..M12.",c("Cohort" = "Kampala","timeLabel" = "D0"),"INFECTED")
+
+keep.species
+
+```
+
+
+
+
+
+
+# Picornaviridae
+```{r Picornaviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#--------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Picornaviridae
+df.Picorna <- getFamilyDf(ps.aln.enriched,"Picornaviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Picorna$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Picornaviridae 
+plotDiagnos(df.Picorna,"Picornaviridae","Genus",c("Genus","Cohort"))
+
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("Cohort" = "Fisherman"),"Genus","timeLabel","wilcox.test","holm",0.05,TRUE)
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("Cohort" = "Kampala"),"Genus","timeLabel","wilcox.test","holm",0.05,TRUE)
+
+
+## per genus count analysis
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Picorna,ps.ge.clean,"Picornaviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -------------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Picornaviridae
+df.Picorna <- getFamilyDf(ps.aln.enriched,"Picornaviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Picorna$Species)
+
+## Genus level diagnostic plot per Family  ---- Picornaviridae
+plotDiagnos(df.Picorna,"Picornaviridae","Genus",c("Species","Cohort"))
+
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("Cohort" = "Fisherman"),"Species","timeLabel","wilcox.test","holm",0.05,FALSE)
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("Cohort" = "Kampala"),"Species","timeLabel","wilcox.test","holm",0.05,FALSE)
+
+
+## per genus count analysis
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+  # fisherman D0 INFECTED
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Picorna,ps.sp.clean,"Picornaviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Picornaviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,90,FALSE,-0.09,0.1,2)
+
+```
+
+
+
+
+
+
+
+# Virgaviridae genus
+```{r Virgaviridae}
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#----------------------------------------------------Genus---------------------------------------------------#
+
+# get dataframe from the specific Family ---- Virgaviridae
+df.virga <- getFamilyDf(ps.aln.enriched,"Virgaviridae","Genus",null,100)
+
+keep.genus <- unique(df.virga$Genus)
+
+## Genus level diagnostic plot per Family  ---- Virgaviridae
+plotDiagnos(df.virga,"Virgaviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.virga,ps.ge.clean,"Virgaviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.virga,ps.ge.clean,"Virgaviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.virga,ps.ge.clean,"Virgaviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","dunn.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.virga,ps.ge.clean,"Virgaviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","dunn.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.virga,ps.ge.clean,"Virgaviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","dunn.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.virga,ps.ge.clean,"Virgaviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","dunn.test","holm",0.05)
+
+
+# ---------------------------------------------------species----------------------------------------------#
+
+
+# get dataframe from the specific Family ---- Virgaviridae
+df.virga <- getFamilyDf(ps.aln.enriched,"Virgaviridae","Species",keep.genus,100)
+
+keep.species <- unique(df.virga$Species)
+
+## Genus level diagnostic plot per Family  ---- Astroviridae
+plotDiagnos(df.virga,"Virgaviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.virga,ps.sp.clean,"Virgaviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.virga,ps.sp.clean,"Virgaviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.virga,ps.sp.clean,"Virgaviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","dunn.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.virga,ps.sp.clean,"Virgaviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","dunn.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.virga,ps.sp.clean,"Virgaviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","dunn.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.virga,ps.sp.clean,"Virgaviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","dunn.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Virgaviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,90,FALSE,-0.09,0.1,2)
+```
+
+
+
+
+
+
+## Smacoviridae
+```{r Smacoviridae}
+
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Smacoviridae
+df.Smaco <- getFamilyDf(ps.aln.enriched,"Smacoviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Smaco$Genus)
+
+## Genus level diagnostic plot per Family  ---- Smacoviridae 
+plotDiagnos(df.Smaco,"Smacoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Smaco,ps.ge.clean,"Smacoviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Smaco,ps.ge.clean,"Smacoviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Smaco,ps.ge.clean,"Smacoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Smaco,ps.ge.clean,"Smacoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Smaco,ps.ge.clean,"Smacoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Smaco,ps.ge.clean,"Smacoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Smacoviridae
+df.Smaco <- getFamilyDf(ps.aln.enriched,"Smacoviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Smaco$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Smacoviridae
+plotDiagnos(df.virga,"Picornaviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Smaco,ps.sp.clean,"Smacoviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Smaco,ps.sp.clean,"Smacoviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Smaco,ps.sp.clean,"Smacoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Smaco,ps.sp.clean,"Smacoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Smaco,ps.sp.clean,"Smacoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Smaco,ps.sp.clean,"Smacoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Smacoviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,90,FALSE,0.02,0.05,2)
+
+
+```
+
+
+
+
+## Genomoviridae
+```{r Genomoviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Genomovirida
+df.Genom <- getFamilyDf(ps.aln.enriched,"Genomoviridae","Genus",null,100)
+
+keep.genus <- unique(df.Genom$Genus)
+
+## Genus level diagnostic plot per Family  ---- Genomovirida 
+plotDiagnos(df.Genom,"Genomovirida","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Genom,ps.ge.clean,"Genomoviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Genom,ps.ge.clean,"Genomoviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Genom,ps.ge.clean,"Genomoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Genom,ps.ge.clean,"Genomoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Genom,ps.ge.clean,"Genomoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Genom,ps.ge.clean,"Genomoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Genomovirida
+df.Genom <- getFamilyDf(ps.aln.enriched,"Genomoviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Genom$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Genomovirida
+plotDiagnos(df.Genom,"Genomoviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Genom,ps.sp.clean,"Genomoviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Genom,ps.sp.clean,"Genomoviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Genom,ps.sp.clean,"Genomoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Genom,ps.sp.clean,"Genomoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Genom,ps.sp.clean,"Genomoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Genom,ps.sp.clean,"Genomoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Genomoviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,-0.05,4)
+
+
+```
+
+
+# Betaflexiviridae
+```{r Betaflexiviridae}
+
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Betaflexiviridae
+df.Betaflex <- getFamilyDf(ps.aln.enriched,"Betaflexiviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Betaflex$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Betaflexiviridae 
+plotDiagnos(df.Betaflex,"Betaflexiviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Betaflex,ps.ge.clean,"Betaflexiviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Betaflex,ps.ge.clean,"Betaflexiviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Betaflex,ps.ge.clean,"Betaflexiviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Betaflex,ps.ge.clean,"Betaflexiviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Betaflex,ps.ge.clean,"Betaflexiviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Betaflex,ps.ge.clean,"Betaflexiviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Betaflexiviridae
+df.Betaflex <- getFamilyDf(ps.aln.enriched,"Betaflexiviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Betaflex$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Betaflexiviridae
+plotDiagnos(df.Betaflex,"Betaflexiviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D0"),"Betaflexiviridae",keep.genus,keep.species,"Cohort")
+plotFisher(df.fisher,0,FALSE,0,-0.05,4)
+
+
+```
+
+
+# Dicistroviridae
+```{r Dicistroviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Dicistroviridae
+df.Dicistro <- getFamilyDf(ps.aln.enriched,"Dicistroviridae","Genus",null,90)  ## the max count is 97, so chose 90
+
+keep.genus <- unique(df.Dicistro$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Dicistroviridae 
+plotDiagnos(df.Dicistro,"Dicistroviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Dicistroviridae
+df.Dicistro <- getFamilyDf(ps.aln.enriched,"Dicistroviridae","Species",keep.genus,90) 
+
+keep.species <- unique(df.Dicistro$Species)
+
+## Genus level diagnostic plot per Family  ---- Dicistroviridae
+plotDiagnos(df.Betaflex,"Dicistroviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Dicistro,ps.sp.clean,"Dicistroviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Dicistro,ps.sp.clean,"Dicistroviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Dicistro,ps.sp.clean,"Dicistroviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Dicistro,ps.sp.clean,"Dicistroviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Dicistro,ps.ge.clean,"Dicistroviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Dicistro,ps.sp.clean,"Dicistroviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365", "Cohort" = "Kampala"),"Dicistroviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,-0.05,4)
+
+
+```
+
+
+# Picobirnaviridae
+```{r Picobirnaviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Picobirnaviridae
+df.Picobirna <- getFamilyDf(ps.aln.enriched,"Picobirnaviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Picobirna$Genus)
+
+## Genus level diagnostic plot per Family  ---- Picobirnaviridae 
+plotDiagnos(df.Picobirna,"Picobirnaviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Picobirna,ps.ge.clean,"Picobirnaviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Picobirna,ps.ge.clean,"Picobirnaviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Picobirna,ps.ge.clean,"Picobirnaviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Picobirna,ps.ge.clean,"Picobirnaviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Picobirna,ps.ge.clean,"Picobirnaviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Picobirna,ps.ge.clean,"Picobirnaviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Picobirnaviridae 
+df.Picobirna <- getFamilyDf(ps.aln.enriched,"Picobirnaviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Picobirna$Species)
+
+## Genus level diagnostic plot per Family  ---- Picobirnaviridae
+plotDiagnos(df.Picobirna,"Picobirnaviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Picobirna,ps.sp.clean,"Picobirnaviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Picobirna,ps.sp.clean,"Picobirnaviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Picobirna,ps.sp.clean,"Picobirnaviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Picobirna,ps.sp.clean,"Picobirnaviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Picobirna,ps.sp.clean,"Picobirnaviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Picobirna,ps.sp.clean,"Picobirnaviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Picobirnaviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0.05,0.05,2.5)
+
+
+```
+
+
+# Circoviridae
+```{r Circoviridae}
+
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Circoviridae
+df.Circo <- getFamilyDf(ps.aln.enriched,"Circoviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Circo$Genus)
+
+## Genus level diagnostic plot per Family  ---- Circoviridae
+plotDiagnos(df.Circo,"Circoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Circo,ps.ge.clean,"Circoviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Circo,ps.ge.clean,"Circoviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Circo,ps.ge.clean,"Circoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Circo,ps.ge.clean,"Circoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Circo,ps.ge.clean,"Circoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Circo,ps.ge.clean,"Circoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Circoviridae 
+df.Circo <- getFamilyDf(ps.aln.enriched,"Circoviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Circo$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Circoviridae 
+plotDiagnos(df.Circo,"Circoviridae","Species",c("Species","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Circo,ps.sp.clean,"Circoviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Circo,ps.sp.clean,"Circoviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Circo,ps.sp.clean,"Circoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Circo,ps.sp.clean,"Circoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Circo,ps.sp.clean,"Circoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Circo,ps.sp.clean,"Circoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Circoviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,30,FALSE,0.05,0.05,2.5)
+
+
+```
+
+
+# Adenoviridae
+```{r Adenoviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Adenoviridae
+df.Adeno <- getFamilyDf(ps.aln.enriched,"Adenoviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Adeno$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Adenoviridae
+plotDiagnos(df.Adeno,"Adenoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Adeno,ps.ge.clean,"Adenoviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Adeno,ps.ge.clean,"Adenoviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Adeno,ps.ge.clean,"Adenoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Adeno,ps.ge.clean,"Adenoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Adeno,ps.ge.clean,"Adenoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Adeno,ps.ge.clean,"Adenoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Adenoviridaee 
+df.Adeno <- getFamilyDf(ps.aln.enriched,"Adenoviridae","Species",keep.genus,100)  ## chose 3000 in Scott's script
+
+keep.species <- unique(df.Adeno$Species) 
+
+
+## Genus level diagnostic plot per Family  ---- Adenoviridae 
+plotDiagnos(df.Adeno,"Adenoviridaee","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Adeno,ps.sp.clean,"Adenoviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Adeno,ps.sp.clean,"Adenoviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Adeno,ps.sp.clean,"Adenoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Adeno,ps.sp.clean,"Adenoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Adeno,ps.sp.clean,"Adenoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Adeno,ps.sp.clean,"Adenoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365", "Cohort" = "Kampala"),"Adenoviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.01,2.5)
+
+
+```
+
+
+# Luteoviridae
+```{r Luteoviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Luteoviridae
+df.Luteo <- getFamilyDf(ps.aln.enriched,"Luteoviridae","Genus",null,60)  ## because species threshold is 60
+
+keep.genus <- unique(df.Luteo$Genus)
+
+## Genus level diagnostic plot per Family  ---- Luteoviridae
+plotDiagnos(df.Luteo,"Luteoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Luteo,ps.ge.clean,"Luteoviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Luteo,ps.ge.clean,"Luteoviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Luteo,ps.ge.clean,"Luteoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Luteo,ps.ge.clean,"Luteoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Luteo,ps.ge.clean,"Luteoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Luteo,ps.ge.clean,"Luteoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Luteoviridae
+df.Luteo <- getFamilyDf(ps.aln.enriched,"Luteoviridae","Species",keep.genus,60) # largest count is 69
+
+
+keep.species <- unique(df.Luteo$Species)
+
+## Genus level diagnostic plot per Family  ---- Luteoviridae 
+plotDiagnos(df.Luteo,"Luteoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Luteo,ps.sp.clean,"Luteoviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Luteo,ps.sp.clean,"Luteoviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Luteo,ps.sp.clean,"Luteoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Luteo,ps.sp.clean,"Luteoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.testt","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Luteo,ps.sp.clean,"Luteoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Luteo,ps.sp.clean,"Luteoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Luteoviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.01,2.5)
+
+View(df.fisher)
+
+```
+
+
+# Parvoviridae
+```{r Parvoviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Parvoviridae
+df.Parvo <- getFamilyDf(ps.aln.enriched,"Parvoviridae","Genus",null,10)  ## threshold of species is 50
+
+keep.genus <- unique(df.Parvo$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Parvoviridae
+plotDiagnos(df.Parvo,"Parvoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Parvo,ps.ge.clean,"Parvoviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Parvo,ps.ge.clean,"Parvoviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Parvo,ps.ge.clean,"Parvoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Parvo,ps.ge.clean,"Parvoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Parvo,ps.ge.clean,"Parvoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Parvo,ps.ge.clean,"Parvoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Parvoviridae
+df.Parvo <- getFamilyDf(ps.aln.enriched,"Parvoviridae","Species",keep.genus,10) 
+
+keep.species <- unique(df.Parvo$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Parvoviridae 
+plotDiagnos(df.Parvo,"Parvoviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Parvo,ps.sp.clean,"Parvoviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Parvo,ps.sp.clean,"Parvoviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Parvo,ps.sp.clean,"Parvoviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Parvo,ps.sp.clean,"Parvoviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Parvo,ps.sp.clean,"Parvoviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Parvo,ps.sp.clean,"Parvoviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Parvoviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,30,FALSE,0.05,0.07,2.5)
+
+
+```
+
+
+# Potyviridae
+```{r Potyviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Potyviridae
+df.Poty <- getFamilyDf(ps.aln.enriched,"Potyviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+
+keep.genus <- unique(df.Poty$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Parvoviridae
+plotDiagnos(df.Poty,"Potyviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Poty,ps.ge.clean,"Potyviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Poty,ps.ge.clean,"Potyviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Poty,ps.ge.clean,"Potyviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Poty,ps.ge.clean,"Potyviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Poty,ps.ge.clean,"Potyviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Poty,ps.ge.clean,"Potyviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Potyviridae
+df.Poty <- getFamilyDf(ps.aln.enriched,"Potyviridae","Species",keep.genus,100)
+
+
+keep.species <- unique(df.Poty$Species)
+
+
+
+## Genus level diagnostic plot per Family  ---- Potyviridae 
+plotDiagnos(df.Poty,"Potyviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Poty,ps.sp.clean,"Potyviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Poty,ps.sp.clean,"Potyviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Poty,ps.sp.clean,"Potyviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Poty,ps.sp.clean,"Potyviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Poty,ps.sp.clean,"Potyviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","dunn.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Poty,ps.sp.clean,"Potyviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365", "Cohort" = "Kampala"),"Potyviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.05,2.5)
+
+
+```
+
+
+# Caliciviridae
+```{r Caliciviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Caliciviridae
+df.Calici <- getFamilyDf(ps.aln.enriched,"Caliciviridae","Genus",null,10)  ## chose 10 as threshold
+
+keep.genus <- unique(df.Calici$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Caliciviridae
+plotDiagnos(df.Calici,"Caliciviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Calici,ps.ge.clean,"Caliciviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Calici,ps.ge.clean,"Caliciviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Calici,ps.ge.clean,"Caliciviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Calici,ps.ge.clean,"Caliciviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Calici,ps.ge.clean,"Caliciviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Calici,ps.ge.clean,"Caliciviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Caliciviridae
+df.Calici <- getFamilyDf(ps.aln.enriched,"Caliciviridae","Species",keep.genus,10) 
+
+keep.species <- unique(df.Calici$Species)
+keep.species
+
+## Genus level diagnostic plot per Family  ---- Caliciviridae 
+plotDiagnos(df.Poty,"Caliciviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Calici,ps.sp.clean,"Caliciviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Calici,ps.sp.clean,"Caliciviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Calici,ps.sp.clean,"Caliciviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Calici,ps.sp.clean,"Caliciviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Calici,ps.sp.clean,"Caliciviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Calici,ps.sp.clean,"Caliciviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Caliciviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.05,2.5)
+
+
+```
+
+
+# Anelloviridae
+```{r Anelloviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Anelloviridae
+df.Anello <- getFamilyDf(ps.aln.enriched,"Anelloviridae","Genus",null,10)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Anello$Genus)
+
+
+## Genus level diagnostic plot per Family  ---- Anelloviridae
+plotDiagnos(df.Anello,"Anelloviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Anello,ps.ge.clean,"Anelloviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Anello,ps.ge.clean,"Anelloviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Anello,ps.ge.clean,"Anelloviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Anello,ps.ge.clean,"Anelloviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Anello,ps.ge.clean,"Anelloviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Anello,ps.ge.clean,"Anelloviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Anelloviridae
+df.Anello <- getFamilyDf(ps.aln.enriched,"Anelloviridae","Species",keep.genus,10)
+
+keep.species <- unique(df.Anello$Species)
+
+
+## Genus level diagnostic plot per Family  ---- Anelloviridae
+plotDiagnos(df.Anello,"Anelloviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Anello,ps.sp.clean,"Anelloviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Anello,ps.sp.clean,"Anelloviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Anello,ps.sp.clean,"Anelloviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Anello,ps.sp.clean,"Anelloviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Anello,ps.sp.clean,"Anelloviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Anello,ps.sp.clean,"Anelloviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Anelloviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.05,2.5)
+
+
+```
+
+
+# Viruses
+```{r Viruses}
+# 
+# family.list
+# # Alignment analysis
+# # Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+# 
+# #------------------------------------------Genus---------------------------------------------#
+# 
+# # get dataframe from the specific Family ---- Viruses
+# df.Viruses <- getFamilyDf(ps.aln.enriched,"Viruses","Genus",null,100)  ## chose 3000 in Scott's script
+# 
+# 
+# ## Genus level diagnostic plot per Family  ---- Viruses
+# plotDiagnos(df.Viruses,"Viruses","Genus",c("Genus","Cohort"))
+# 
+# 
+# ## per genus count analysis
+# plotStats(df.Viruses,ps.ge.clean,c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+# # fisherman D0 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# # kampala D0 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# # fisherman D365 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# # kampala D365 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# 
+# 
+# # -----------------------------------------species----------------------------------------------#
+# 
+# # get dataframe from the specific Family ---- Viruses
+# df.Viruses <- getFamilyDf(ps.aln.clean,ps.aln.enriched,"Viruses","Genus",10) 
+# 
+# 
+# ## Genus level diagnostic plot per Family  ---- Viruses
+# plotDiagnos(df.Viruses,"Viruses","Genus",c("Genus","Cohort"))
+# 
+# 
+# ## per genus count analysis
+# plotStats(df.Viruses,ps.ge.clean,c("timeLabel" = "D0"),"Genus","Cohort","dunn.test","fdr",0.05)
+# # fisherman D0 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","dunn.test","holm",0.05)
+# # kampala D0 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","dunn.test","holm",0.05)
+# # fisherman D365 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","dunn.test","holm",0.05)
+# # kampala D365 INFECTED
+# plotStats(df.Viruses,ps.ge.clean,c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","dunn.test","holm",0.05)
+# 
+# 
+# df.fisher <- getFisherDf(ps0.sp.clean,c("Cohort" = "Fisherman","timeLabel" = "D0"),"Viruses",keep.genus,keep.species,"INFECTED")
+# plotFisher(df.fisher)
+
+```
+
+
+# Flaviviridae
+```{r Flaviviridae}
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Flaviviridae
+df.Flavi <- getFamilyDf(ps.aln.enriched,"Flaviviridae","Genus",null,100)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Flavi$Genus)
+
+## Genus level diagnostic plot per Family  ---- Flaviviridae
+plotDiagnos(df.Flavi,"Flaviviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Flavi,ps.ge.clean,"Flaviviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Flavi,ps.ge.clean,"Flaviviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Flavi,ps.ge.clean,"Flaviviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Flavi,ps.ge.clean,"Flaviviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Flavi,ps.ge.clean,"Flaviviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Flavi,ps.ge.clean,"Flaviviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Flaviviridae
+df.Flavi <- getFamilyDf(ps.aln.enriched,"Flaviviridae","Species",keep.genus,100) 
+
+keep.species <- unique(df.Flavi$Species)
+
+## Genus level diagnostic plot per Family  ---- Flaviviridae
+plotDiagnos(df.Flavi,"Viruses","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Flavi,ps.sp.clean,"Flaviviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Flavi,ps.sp.clean,"Flaviviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Flavi,ps.sp.clean,"Flaviviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Flavi,ps.sp.clean,"Flaviviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Flavi,ps.sp.clean,"Flaviviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Flavi,ps.sp.clean,"Flaviviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Fisherman"),"Flaviviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.05,2.5)
+
+
+```
+
+
+# Closteroviridae
+```{r Closteroviridae}
+
+
+family.list
+# Alignment analysis
+# Quick check for common genera (to see how many kinds of genus in this family and the number of each kind of genus)
+
+#------------------------------------------Genus---------------------------------------------#
+
+# get dataframe from the specific Family ---- Closteroviridae
+df.Clostero <- getFamilyDf(ps.aln.enriched,"Closteroviridae","Genus",null,10)  ## chose 3000 in Scott's script
+
+keep.genus <- unique(df.Clostero$Genus)
+
+## Genus level diagnostic plot per Family  ---- Closteroviridae
+plotDiagnos(df.Clostero,"Closteroviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Clostero,ps.ge.clean,"Closteroviridae",c("timeLabel" = "D0"),"Genus","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Clostero,ps.ge.clean,"Closteroviridae",c("timeLabel" = "D365"),"Genus","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Clostero,ps.ge.clean,"Closteroviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Clostero,ps.ge.clean,"Closteroviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Clostero,ps.ge.clean,"Closteroviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Clostero,ps.ge.clean,"Closteroviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Genus","INFECTED","wilcox.test","holm",0.05)
+
+
+# -----------------------------------------species----------------------------------------------#
+
+# get dataframe from the specific Family ---- Closteroviridae
+df.Clostero <- getFamilyDf(ps.aln.enriched,"Closteroviridae","Species",keep.genus,10) 
+
+keep.species <- unique(df.Clostero$Species)
+
+## Genus level diagnostic plot per Family  ---- Closteroviridae
+plotDiagnos(df.Clostero,"Closteroviridae","Genus",c("Genus","Cohort"))
+
+
+## per genus count analysis
+plotStats(df.Clostero,ps.sp.clean,"Closteroviridae",c("timeLabel" = "D0"),"Species","Cohort","wilcox.test","holm",0.05)
+plotStats(df.Clostero,ps.sp.clean,"Closteroviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05)
+# fisherman D0 INFECTED
+plotStats(df.Clostero,ps.sp.clean,"Closteroviridae",c("Cohort" = "Fisherman","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D0 INFECTED
+plotStats(df.Clostero,ps.sp.clean,"Closteroviridae",c("Cohort" = "Kampala","timeLabel" = "D0"),"Species","INFECTED","wilcox.test","holm",0.05)
+# fisherman D365 INFECTED
+plotStats(df.Clostero,ps.sp.clean,"Closteroviridae",c("Cohort" = "Fisherman","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+# kampala D365 INFECTED
+plotStats(df.Clostero,ps.sp.clean,"Closteroviridae",c("Cohort" = "Kampala","timeLabel" = "D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+
+df.fisher <- getFisherDf(ps0.sp.clean,c("timeLabel" = "D365","Cohort" = "Kampala"),"Closteroviridae",keep.genus,keep.species,"INFECTED")
+plotFisher(df.fisher,0,FALSE,0,0.05,2.5)
+
+
+```
+
+
+
+## functions
+```{r}
+
+getFamilyDf <- function(ps.aln.enriched,Family.name,tax_rank,genusKept,count_threshold){
+  
+  df <- ps.aln.enriched %>%
+        filter(Family == Family.name) %>%
+        droplevels() %>%
+        group_by_(tax_rank) 
+  
+  df.check <- df %>%
+              tally() %>%
+              arrange(-n)
+  
+  View(df.check)
+  
+  
+  if(tax_rank == "Species"){
+    
+    ps.aln.enriched <- ps.aln.enriched %>%
+                       filter(Genus %in% genusKept)
+    
+  }
+  
+  
+  # Filter out low abundant genera in genus level
+  ps.aln.enriched.Astro <- ps.aln.enriched %>%
+                           filter(Family == Family.name) %>%
+                           droplevels() %>%
+                           group_by_(tax_rank) %>%
+                            mutate(count = n()) %>%
+                            filter(count > count_threshold) %>%
+                            droplevels()
+  
+
+  
+  
+  return(ps.aln.enriched.Astro)
+  
+}
+
+
+# plot diagnostic plots
+plotDiagnos <- function(df,Family.name,tax_rank,facet.list){
+
+ # make input metadata list to a formula object
+ facet.string <- paste(facet.list,collapse = "~")
+ formula <- as.formula(paste("~",facet.string))  
+ 
+
+ p <- ggplot(df, aes(x = alignment_length_adjusted, y = percent_id, size = log2(Abundance), color =  df[[tax_rank]]),show.legend = FALSE) +
+                            geom_jitter(alpha = 0.5) +
+                            facet_wrap(formula) +
+                            labs(x = "Adjusted Alignment Length", y = "% ID") +
+                            guides(colour = guide_legend(override.aes = list(size=3, alpha = 1))) +
+                            theme(legend.position = "bottom") + 
+                            labs(color = tax_rank)
+
+ print(p)
+  
+
+}
+
+
+
+# Genus count analysis and stats
+plotStats <- function(df, # this df is the dataset got from function getFamilyDf(), named "ps.aln.enriched.Astro"
+                      df.stand,  # this df.stand is the genus or species level standardized count table
+                      Family.name, # the family yo are look at
+                      meta.list, ##c(name1 = value1,name2 = value2)
+                      tax_rank,
+                      comparison,
+                      test.method,
+                      p.adj.method,
+                      p.adj.threshold,
+                      plus){
+  
+  # get the taxa names to keep
+  keep <- unique(df[[tax_rank]])
+
+  # clean the table  
+  # mutate a new column named mean_rank use for later plot order
+  df.real <-  df.stand %>%
+              filter(Family == Family.name) %>%
+              filter(!!as.name(tax_rank) %in% keep) %>%
+              droplevels() %>%
+              group_by_(tax_rank) %>%
+              mutate(mean_rank = mean(Abundance)) %>%
+              ungroup()
+  
+  
+  
+   
+  # subset the df to the cohort you are interested in
+  for (i in (1:length(meta.list))){
+
+           df.real <- df.real %>%
+                 subset(df.real[[names(meta.list)[i]]] == unname(meta.list)[i])
+  }
+  
+
+
+  # check if there are taxa needs remove (taxa with all 0s will lead to stats function failed)
+  df.check0 <- df.real %>%
+               group_by_(tax_rank) %>%
+               summarise(sum(scaled_abundance_median)) %>%
+               rename("sum" = "sum(scaled_abundance_median)")
+  
+  
+  # check the taxa name that needs remove
+  # remove them to prevent future function failure
+  removeName <- df.check0 %>%
+                filter(sum == 0) %>%
+                select(1) %>%
+                deframe()
+  
+  
+  # remove the all-0 taxa name from the dataset
+  df.real <- df.real %>%
+             filter(!(!!as.name(tax_rank) %in% removeName)) 
+  
+  # check if all the taxa are 0s
+  # if all taxa are 0s in this cohort, function will fail
+  # print out a error message to terminate the function
+  if (sum(df.check0$sum) == 0){
+
+    stop("All 0 in this subset.")
+    
+   }
+  
+
+  # when plot has no enough space to show sd bar, you can choose to add some 
+  # space to the plot by "+1"(plus is TRUE) or not "+1"(plus is FALSE)
+  if (plus){
+    
+   # mutate a new column named log_scaled to include thelog10(scaled_abundance_median)
+   # and replace the -inf to 0 (if not, mean calculation would fail)
+   df.real <- df.real %>%
+                mutate(log_scaled = log10(scaled_abundance_median+1)) %>%
+                mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) 
+    
+  }else if(!plus){
+  # mutate a new column named log_scaled to include thelog10(scaled_abundance_median)
+  # and replace the -inf to 0 (if not, mean calculation would fail)
+  df.real <- df.real %>%
+                mutate(log_scaled = log10(scaled_abundance_median)) %>%
+                mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) 
+  
+  }
+  
+  
+  # make plot
+  p <- ggplot(df.real, aes(x = df.real[[comparison]], y = log_scaled)) +
+                        geom_jitter(size = 1.5, width = 0.2, alpha = 0.2) +
+                        facet_wrap(~fct_reorder(df.real[[tax_rank]], mean_rank, .desc = TRUE)) +
+                        labs(y = "Abundance (log10)", x ="")
+  
+  # add summary dot to the plot
+  p <- add_summary(data = df.real, p, "mean_sd", color = "red", size = 0.4)
+
+  
+  # calculate the mean and median values for each group
+  # pivot the table for later merging into the main stats table
+  df.mean.median <- df.real %>%
+         mutate("temp" = paste(!!as.name(tax_rank),!!as.name(comparison),sep = "_")) %>%
+         group_by(temp) %>%
+         summarise_at("log_scaled",funs(mean,median)) %>%
+         separate(temp, c(tax_rank,"group"),sep = "_") %>%
+         pivot_wider(names_from = "group",values_from = c("mean","median"))
+
+  # mutate a new column named "forStats" with log10(scaled_abundance_median),
+  # because we need to use the original value (without +1) to caclculate the stats
+  df.stats <- df.real %>%
+              mutate("forStats" = log10(scaled_abundance_median)) %>%
+              mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x))
+  
+  
+  # make formula for stats calculation
+  formula <- as.formula(paste0("forStats", "~", comparison))
+  
+  # choose stats method
+  if (test.method == "dunn.test"){
+
+    df.stats <- df.stats %>%
+                 group_by_(tax_rank) %>%
+                 dunn_test(formula, p.adjust.method = p.adj.method) %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+
+  }else if(test.method == "wilcox.test"){
+
+    df.stats <- df.stats %>%
+                 group_by_(tax_rank) %>%
+                 wilcox_test(formula) %>%
+                 adjust_pvalue(method = p.adj.method) %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+
+  }else if(test.method == "kruskal"){
+
+    df.stats <- df.stats %>%
+                 group_by_(tax_rank) %>%
+                 kruskal_test(formula) %>%
+                 adjust_pvalue(method = p.adj.method) %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+  }
+
+  
+      
+  # Quick summary of significance
+  # merging with the mean and median table
+   p.value <- df.stats %>%
+              arrange_(tax_rank) %>%
+              left_join(df.mean.median) %>%
+              rename("mean_1" = !!names(.[11]),"mean_2" = !!names(.[12]),"median_1" = !!names(.[13]),"median_2" = !!names(.[14])) %>%
+              select(-c(p,statistic,.y.)) %>%
+              rename("sigif" = "p.adj.signif")
+
+
+  # make the stats table as a plotable table
+  p.table <- tableGrob(p.value)
+
+  # arrange plot and table together
+  grid.arrange(p,p.table)
+  
+
+}
+
+
+# for each level one by one
+# getFisher <- function(df,
+#                       df.stand,
+#                       tax_rank,
+#                       meta.list,
+#                       comparison,
+#                       path){
+#   
+#   
+#   keep <- unique(df[[tax_rank]])
+#   
+#   df.stand <- df.stand %>%
+#             filter(!!as.name(tax_rank) %in% keep) %>%
+#             droplevels()
+#   
+#   
+#   # subset the df
+#     for (i in (1:length(meta.list))){
+# 
+#            df.stand <- df.stand %>%
+#                  subset(df.stand[[names(meta.list)[i]]] == unname(meta.list)[i])
+#     }
+#   
+# 
+#    fisher <-   df.stand  %>%
+#                 mutate(PA = ifelse(Abundance > 0, "1", "0")) %>%
+#                 drop_na(PA) %>%
+#                 group_by_(tax_rank) %>%
+#                 summarise(p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+#                 mutate(sig = ifelse(p.value < 0.05,"significant","non-significant")) 
+#   
+#   
+#   return(fisher)
+#   
+# }
+
+
+# get fisher table
+getFisherDf <- function(ps0, #raw species level ps0 object
+                        meta.list, #the metadata based on which you want to subset, and the value to subset
+                        family.keep, #the Family level you are looking at 
+                        genus.keep, #the genus level taxa that should be kept
+                        species.keep, #the species level taxa that should be kept
+                        comparison) #the variable you want to do fisher test)
+                        {
+  
+  
+  
+  
+  for (i in 1:length(meta.list)){
+      remove_idx = get_variable(ps0,names(meta.list)[i]) == unname(meta.list)[i]
+      ps0 = prune_samples(remove_idx, ps0)
+  }
+  
+  
+  
+  family.fisher <- ps0 %>%
+                  tax_glom("Family") %>%
+                  speedyseq::psmelt() %>%
+                  filter(Family == family.keep) %>%
+                  droplevels() %>%
+                  mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+                  drop_na(PA) %>%
+                  group_by(Family) %>%
+                  summarise(PA.list = list(PA),
+                            comparison.list = list(!!as.name(comparison)),
+                             p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+                  mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+                  mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+  
+  
+  # transform to data table for later use
+    family.fisher <- data.table(family.fisher)
+    
+    family.fisher <- family.fisher[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {if(length(unique(x)) == 1){0} else{table(x,y)[2,1]/table(x,y)[1,1] -
+                    table(x,y)[2,2]/table(x,y)[1,2]}})]  %>%
+                    mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],levels(unlist(comparison.list))[2])) %>%
+                    rename("Level" = "Family") %>%
+                    mutate("Name" = "Family") %>%
+                    #select(-c(PA.list,comparison.list)) %>%
+                    mutate(sig = ifelse(sig == "significant",driveBy,sig))
+  
+  
+
+  
+  
+
+
+  genus.fisher <- ps0 %>%
+                  tax_glom("Genus") %>%
+                  speedyseq::psmelt() %>%
+                  filter(Family %in% family.keep) %>%
+                  filter(Genus %in% genus.keep) %>%
+                  droplevels() %>%
+                  mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+                  drop_na(PA) %>%
+                  mutate(Genus.modify = paste(Family,Genus,sep = "_")) %>%
+                  group_by(Genus.modify) %>%
+                  summarise(PA.list = list(PA),
+                            comparison.list = list(!!as.name(comparison)),
+                             p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+                  mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+                  mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+
+    # transform to data table for later use
+    genus.fisher <- data.table(genus.fisher)
+    
+    genus.fisher <- genus.fisher[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {if(length(unique(x)) == 1){0} else{table(x,y)[2,1]/table(x,y)[1,1] -
+                    table(x,y)[2,2]/table(x,y)[1,2]}})]  %>%
+                    mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],levels(unlist(comparison.list))[2])) %>%
+                    rename("Level" = "Genus.modify") %>%
+                    mutate("Name" = "Genus") %>%
+                    #select(-c(PA.list,comparison.list)) %>%
+                    mutate(sig = ifelse(sig == "significant",driveBy,sig))
+
+
+  
+  
+    species.fisher <- ps0 %>%
+                  speedyseq::psmelt() %>%
+                  filter(Family %in% family.keep) %>%
+                  filter(Species %in% species.keep) %>%
+                  droplevels() %>%
+                  mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+                  drop_na(PA) %>%
+                  mutate(Species.modify = paste(Family,Genus,Species,sep = "_")) %>%
+                  group_by(Species.modify) %>%
+                  summarise(PA.list = list(PA),
+                            comparison.list = list(!!as.name(comparison)),
+                             p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+                  mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+                  mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+    
+     # transform to data table for later use
+    species.fisher <- data.table(species.fisher)
+    
+    
+    species.fisher <- species.fisher[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {if(length(unique(x)) == 1){0} else{table(x,y)[2,1]/table(x,y)[1,1] -
+                    table(x,y)[2,2]/table(x,y)[1,2]}})]  %>%
+                    mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],
+                                            ifelse(fisherRatio == 0, "non-significant",
+                                                   levels(unlist(comparison.list))[2]))) %>%
+                    rename("Level" = "Species.modify") %>%
+                    mutate("Name" = "Species") %>%
+                    mutate(sig = ifelse(sig == "significant",driveBy,sig))
+
+  
+  df.fisher <- rbind(family.fisher,genus.fisher,species.fisher)
+
+
+  return(df.fisher)
+  
+  
+}
+
+
+
+
+# plot fisher results
+plotFisher <- function(df,angle.point,shape,x,y,size.value){
+  
+  
+# get Family level and Genus level p values
+p.v <- df %>%
+       subset(Name != "Species") %>%
+       select("sig") %>%
+       deframe()
+
+
+# transform dataframe to proper format
+data <- df %>%
+      .[-(1:length(p.v)),] %>%
+      separate("Level",c("level1","level2","level3"),sep = "_") %>%
+      mutate(level1 = paste("Family.",level1),
+            level2 = paste("Genus.",level2),
+            level3 = paste("Species.",level3)) %>%
+      mutate("color" = ifelse(p.value == "sig","red","black"))
+
+View(data)
+# transform it to a edge list
+edges_level1_2 <- data %>% select(level1, level2) %>% unique %>% rename(from=level1, to=level2)
+edges_level2_3 <- data %>% select(level2, level3) %>% unique %>% rename(from=level2, to=level3)
+edge_list <- rbind(edges_level1_2, edges_level2_3)
+
+
+# Now we can plot that
+mygraph <- graph_from_data_frame(edge_list)
+
+# make label name shorter
+V(mygraph)$name <- sapply(strsplit(V(mygraph)$name,"[.]"),"[")[2,]
+
+# # set name index
+# name.list <- V(mygraph)$name
+# names(name.list) <- seq_along(name)
+# 
+# # make the name checkout table
+# nameIndex <- data.frame(index = names(name.list),
+#                         name = unname(name.list))
+
+
+# set up new name label info in mygraph object
+V(mygraph)$color <- c(p.v,as.character(data$sig))
+
+# set color label
+the_colors <- c("black", "red", "grey")
+names(the_colors) <- c(levels(unlist(df$comparison.list)),"non-significant")
+
+
+
+# mkae plot
+p <- ggraph(mygraph, layout = 'dendrogram',circular = shape) +
+      #geom_edge_diagonal() +
+      geom_edge_link(data = get_edges(size = 20)) + 
+      geom_node_point(aes(color = color,size = 20)) +
+      #geom_label(aes(x = x, y = y,label = name),angle = angel.point,nudge_x = -0.04,nudge_y = 0.09) +
+      geom_node_text(aes(label = name,angle = angle.point),size = size.value,fontface = "bold", nudge_x = x,nudge_y = y) +
+      scale_colour_manual(limits = names(the_colors), values = the_colors) +
+      theme_void() + 
+      theme(legend.position = 'right') +
+      guides(size=FALSE,
+             color=guide_legend(title=""))
+
+# make index table a table plot
+#index.table <- tableGrob(nameIndex,rows = NULL)
+
+# create a blank space in between two plots
+blank<-rectGrob(gp=gpar(col="white"))
+
+par(mar=c(10,6,4,1)+.1)
+
+# combine them together
+ggarrange(p)
+
+  
+}
+
+
+
+
+
+
+
+
+## plotLinear regression
+# 1. use the ps0 taxa table to extract sp number of the taxa
+# 2. get count column based on the sp number from otu table
+# 3. merge with the metadata
+# 3. build linear model on the taxa and the hepb contenious variable
+fitLinear <- function(ps0,keep.species,x,meta.list,color){
+  
+      df.taxa <- tax_table(ps0) 
+  
+      # get the sp numbers
+      df.detected <- as.data.frame(df.taxa[,"Species"][df.taxa[,"Species"] %in% keep.species,]) %>%
+               rownames_to_column("OTU") %>%
+               mutate(Speicies = ifelse(Species %like% c("Mamastrovirus 1","Astroviridae","Human astrovirus"),c("Mamastrovirus.1","Astroviridae","Human.astrovirus"),Species))
+      
+
+      
+      # get otu table
+      df.otu <- as.data.frame(otu_table(ps0)) %>%
+                      filter(rownames(.) %in% df.detected$OTU) %>%
+                      t(.) %>%
+                      as.data.frame(.) %>%
+                      rownames_to_column("Sample.name") 
+                      
+       
+      
+      
+      # change column names    
+      #colnames(df.otu)[2:dim(df.otu)[2]] <- as.character(keep.species)
+      colnames(df.otu)[2:dim(df.otu)[2]] <- c("Mamastrovirus.1","Astroviridae","Human.astrovirus")
+      
+      keep.species = c("Mamastrovirus.1","Astroviridae","Human.astrovirus")
+        
+      # merge the metadata and taxa together  
+      df.sample <- data.frame(sample_data(ps0)) %>%
+                      merge(df.otu,by = "Sample.name") 
+      
+     
+      
+      # subset the df to the cohort you are interested in
+      for (j in (1:length(meta.list))){
+    
+               df.sample <- df.sample %>%
+                     subset(df.sample[[names(meta.list)[j]]] == unname(meta.list)[j])
+      }
+
+       
+      for (i in keep.species){
+        
+        
+        df.sample[,x] <- as.numeric(df.sample[,x])
+        df.sample[,i] <- as.numeric(df.sample[,i])
+        
+        
+        print("=============================================")
+        print(i)
+        print("=============================================")
+        
+        
+        p <- ggplot(df.sample, aes(x = as.numeric(!!as.name(x)), y = as.numeric(!!as.name(i)),color = df.sample[,color])) +
+          stat_smooth(aes(x = as.numeric(!!as.name(x)), y = as.numeric(!!as.name(i))),method = "lm") +
+          scale_y_log10() +
+          scale_x_log10() +
+          labs(y = i, x = "M12", title = "Kampala D0") +
+          geom_jitter(size = 2, alpha = 0.5, width = 0.2) +
+          theme(legend.title = element_blank())
+          
+        print(p)
+        
+        #print(cor.test(as.numeric(df.sample[,x]), as.numeric(df.sample[,i]), #method = "spearman"))
+        
+        formula0 <- as.formula(paste0(x,"~",i))
+        print(summary(lm(formula0,df.sample)))
+        
+        formula1 <- as.formula(paste0(x,"~",i,"*","INFECTED"))
+        fit1 <- aov(formula1, data = df.sample)
+        
+        
+        formula2 <- as.formula(paste0(x,"~",i,"+","INFECTED"))
+        fit2 <- aov(formula2, data = df.sample)
+        
+        
+        print("comparing fit1 and fit2")
+        print(anova(fit1,fit2))
+        
+      } 
+       
+
+}
+
+
+
+```
+
+
+# stats function check
+```{r}
+
+#(df.Betaflex,ps.sp.clean,"Betaflexiviridae",c("Cohort" = "Kampala","timeLabel" = #"D365"),"Species","INFECTED","wilcox.test","holm",0.05)
+
+keep.genus
+meta.list <- c("timeLabel" = "D365",Cohort = "Fisherman")
+keep.species
+df.real <-  ps.sp.clean %>%
+              filter(Family == "Betaflexiviridae") %>%
+              filter(Species %in% keep.species) %>%
+              #mutate(scaled_abundance_median_plus = scaled_abundance_median + 1) %>%
+              droplevels() %>%
+              group_by_("Species") %>%
+              mutate(mean_genus = mean(Abundance)) %>%
+              ungroup()
+
+
+
+ 
+# subset the df
+for (i in (1:length(meta.list))){
+
+       df.real <- df.real %>%
+             subset(df.real[[names(meta.list)[i]]] == unname(meta.list)[i])
+}
+
+
+ df.check0 <- df.real %>%
+               group_by_(tax_rank) %>%
+               summarise(sum(scaled_abundance_median)) %>%
+               rename("sum" = "sum(scaled_abundance_median)")
+  
+View(df.check0)
+
+removeName <- df.check0 %>%
+                filter(sum == 0) %>%
+                select(1)
+                
+  print(removeName)
+  
+
+# plot (add the p value calculated before on the plot in keynote)
+p <- ggplot(df.real, aes(x = df.real[["INFECTED"]], y = log10(scaled_abundance_median+1))) +
+                      geom_jitter(size = 1.5, width = 0.2, alpha = 0.2) +
+                      facet_wrap(~fct_reorder(df.real[[tax_rank]], mean_genus, .desc = TRUE)) +
+                      labs(y = "Abundance (log10)", x ="")
+  
+p
+
+tax_rank = "Species"
+df.mean.median <- df.real %>%
+           mutate("temp" = paste(Species,INFECTED,sep = "_")) %>%
+           group_by(temp) %>%
+           summarise_at("scaled_abundance_median",funs(mean,median)) %>%
+           mutate(mean = log10(mean)) %>%
+           separate(temp, c(tax_rank,"group"),sep = "_") %>%
+           pivot_wider(names_from = "group",values_from = c("mean","median"))
+
+
+
+View(df.mean.median)
+
+df.stats <- df.real %>%
+                  mutate(log_scaled = log10(scaled_abundance_median)) %>%
+                  mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) 
+
+
+# make formula for later use
+formula <- as.formula(paste0("log_scaled", "~", "INFECTED"))
+
+df.stats <- df.stats %>%
+            select("INFECTED","timeLabel","Cohort","log_scaled","Species")
+
+df.stats <- na.omit(df.stats)
+
+View(df.stats)
+
+df.stats2 <- df.stats %>%
+             group_by(Species) %>%
+             summarise(sum(log_scaled)) 
+
+
+df.stats <- df.real %>%
+                mutate(log_scaled = log10(scaled_abundance_median)) %>%
+                mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) 
+            
+
+  
+# make formula for later use
+formula <- as.formula(paste0("log_scaled", "~", "INFECTED"))
+
+
+df.stats <- df.stats %>%
+             group_by_(tax_rank) %>%
+             dunn_test(formula, p.adjust.method = "holm") %>%
+             add_significance() %>%
+             arrange(p.adj.signif)
+
+
+ p.value <- df.stats %>%
+            #filter(p.adj < p.adj.threshold) %>%
+            arrange_(tax_rank) %>%
+            left_join(df.mean.median) %>%
+            rename("mean_1" = !!names(.[11]),"mean_2" = !!names(.[12]),"median_1" = !!names(.[13]),"median_2" = !!names(.[14]))
+ 
+ print(dim(p.value))
+ 
+#if (dim(p.value)[1] != 0){
+  
+  p.table <- tableGrob(p.value)
+
+  grid.arrange(p,p.table)
+
+```
+
+
+## scott's code test
+```{r}
+
+
+ps <- ps.euk.family.stand %>%
+                 filter(Family %in% "Astroviridae") %>%
+                 filter(timeLabel == "D365")
+
+
+
+# Family level Fisher's exact testing
+# Create presence absence table for each sabin strain per sample per vaccination proximity
+ps.fa.pa <- ps %>%
+  select(Sample.ID, Cohort,Family, Abundance) %>%
+  mutate(PA = ifelse(Abundance > 0, 1, 0)) %>%
+  select(-Abundance) 
+
+
+
+ps.fa.pa.xtab <- ps.fa.pa %>%
+  group_by(Family, Cohort, PA) %>%
+  tally()%>%
+  pivot_wider(names_from = PA, values_from = n) %>%
+  mutate(Percent = 100*(`1`/(`0` + `1`))) %>%
+  ungroup()
+
+ps.fa.pa.xtab
+
+p.fa.pa.xtab <- ggplot(ps.fa.pa.xtab, aes(x = Family, y = Percent, color = Cohort)) +
+  geom_point() +
+  #facet_wrap(~vaccination_proximity) +
+  coord_flip()
+
+ps.fa.pa.xtab
+
+
+
+ps.fa.fishers <- ps.fa.pa.xtab %>%
+  group_by(Family) %>%
+  summarize(pvalue = fisher.test(matrix(c(`0`, `1`), nrow = 2))$p) %>%
+  adjust_pvalue(p.col = "pvalue", output.col = "p.adj", method = "holm")
+
+ps.fa.fishers
+
+
+
+```
+
+
+
+
+
+## fisher's exact test check
+```{r}
+
+# non-significant
+ ps <- ps0.sp.clean %>%
+       subset_samples(timeLabel == "D365")
+
+#significant
+ps <- ps0.sp.clean %>%
+      subset_samples(timeLabel == "D0" & Cohort == "Kampala")
+
+
+
+
+ps <- ps.euk.family.stand %>%
+                  filter(Family %in% "Astroviridae") %>%
+                  filter(timeLabel == "D365")
+
+
+
+
+df <- ps %>%
+      mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+      drop_na(PA) %>%
+      group_by(Family) %>%
+      summarise(PA.list = list(PA),
+                comparison.list = list(!!as.name("Cohort")),
+                 p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name("Cohort"),PA)$p.value,1)) %>%
+      mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+      mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+df
+unlist(df$PA.list[1])
+unlist(df$comparison.list[1])
+
+table(unlist(df$PA.list[1]),unlist(df$comparison.list[1]))
+
+library(epitools)
+
+oddsratio(table(unlist(df$PA.list[1]),unlist(df$comparison.list[1])))
+
+# transform to data table for later use
+dt <- data.table(df)
+
+dt <- dt[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {table(x,y)[2,1]/table(x,y)[1,1] -    
+      table(x,y)[2,2]/table(x,y)[1,2]})] %>%
+      mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],levels(unlist(comparison.list))[2])) %>%
+      rename("Level" = "Genus.modify") %>%
+      mutate("Name" = "Genus") %>%
+      #select(-c(PA.list,comparison.list)) %>%
+      mutate(sig = ifelse(sig == "significant",driveBy,sig))
+    
+dt
+
+levels(unlist(dt$comparison.list))
+
+df.fisher
+```
+
+
+## fisher plot check
+```{r}
+
+
+
+
+# plot fisher results
+plotFisher <- function(df){
+# get Family level and Genus level p values
+p.v <- df %>%
+       subset(Name != "Species") %>%
+       select("sig") %>%
+       deframe()
+# transform dataframe to proper format
+data <- df %>%
+      .[-(1:length(p.v)),] %>%
+      separate("Level",c("level1","level2","level3"),sep = "_") %>%
+      mutate(level1 = paste("Family.",level1),
+            level2 = paste("Genus.",level2),
+            level3 = paste("Species.",level3)) %>%
+      mutate("color" = ifelse(p.value == "sig","red","black"))
+View(data)
+# transform it to a edge list
+edges_level1_2 <- data %>% select(level1, level2) %>% unique %>% rename(from=level1, to=level2)
+edges_level2_3 <- data %>% select(level2, level3) %>% unique %>% rename(from=level2, to=level3)
+edge_list <- rbind(edges_level1_2, edges_level2_3)
+View(edge_list)
+# Now we can plot that
+mygraph <- graph_from_data_frame(edge_list)
+V(mygraph)$name <- sapply(strsplit(V(mygraph)$name,"[.]"),"[")[2,]
+V(mygraph)$color <- c(p.v,as.character(data$sig))
+the_colors <- c("black", "red", "grey")
+names(the_colors) <- c(levels(unlist(df$comparison.list)),"non-significant")
+p <- ggraph(mygraph, layout = 'dendrogram',circular = FALSE) +
+      geom_edge_diagonal() +
+      geom_node_point(aes(color = color,size = 20)) +
+      #geom_node_text(nudge_x = 0.3,nudge_y = 0.3) +
+      scale_colour_manual(limits = names(the_colors), values = the_colors) +
+      geom_node_text(aes(label = name),nudge_x = -0.02,nudge_y = 0.05) +
+      theme_void() + 
+      guides(size=FALSE)
+print(p)
+}
+
+
+
+
+
+
+
+df <- df.fisher
+
+
+df$sig[c(5,6)] <- "NO"
+
+df
+# get Family level and Genus level p values
+p.v <- df %>%
+       subset(Name != "Species") %>%
+#       mutate(p.value = ifelse(p.value < 0.05,"significant","non-significant")) %>%
+#       mutate(color = ifelse(p.value == "significant","red","black")) %>%
+       select("sig") %>%
+       deframe()
+
+
+# transform dataframe to proper format
+data <- df %>%
+      .[-(1:length(p.v)),] %>%
+      separate("Level",c("level1","level2","level3"),sep = "_") %>%
+      mutate(level1 = paste("Family.",level1),
+            level2 = paste("Genus.",level2),
+            level3 = paste("Species.",level3)) %>%
+      mutate("color" = ifelse(p.value == "sig","red","black"))
+
+
+# transform it to a edge list
+edges_level1_2 <- data %>% select(level1, level2) %>% unique %>% rename(from=level1, to=level2)
+edges_level2_3 <- data %>% select(level2, level3) %>% unique %>% rename(from=level2, to=level3)
+edge_list <- rbind(edges_level1_2, edges_level2_3)
+
+# Now we can plot that
+mygraph <- graph_from_data_frame(edge_list)
+
+
+# make label name shorter
+V(mygraph)$name <- sapply(strsplit(V(mygraph)$name,"[.]"),"[")[2,]
+
+# set name index
+name.list <- V(mygraph)$name
+names(name.list) <- seq_along(name)
+
+# make the name checkout table
+nameIndex <- data.frame(index = names(name.list),
+                        name = unname(name.list))
+
+
+# set up new name label info in mygraph object
+V(mygraph)$color <- c(p.v,as.character(data$sig))
+
+# set color label
+the_colors <- c("black", "red", "grey")
+names(the_colors) <- c(levels(unlist(df$comparison.list)),"non-significant")
+
+
+
+# mkae plot
+p <- ggraph(mygraph, layout = 'dendrogram',circular = TRUE) +
+      #geom_edge_diagonal() +
+      geom_edge_link(data = get_edges(size = 1)) + 
+      geom_node_point(aes(color = color,size = 20)) +
+      #geom_node_text(nudge_x = 0.3,nudge_y = 0.3) +
+      scale_colour_manual(limits = names(the_colors), values = the_colors) +
+      geom_node_text(aes(label = names(name.list)),angle = 90,nudge_x = -0.02,nudge_y = 0.05) +
+      theme_void() + 
+      theme(legend.position = 'bottom') +
+      guides(size=FALSE,
+             color=guide_legend(title=""))
+
+# make index table a table plot
+index.table <- tableGrob(nameIndex,rows = NULL)
+
+# create a blank space in between two plots
+blank<-rectGrob(gp=gpar(col="white"))
+
+# combine them together
+ggarrange(p,blank,index.table, widths=c(0.5,0.1,0.4),ncol = 3)
+
+print(p)
+
+```
+
+
+## check overall get fisher
+```{r}
+#significant
+ps0 <- ps0.sp.clean %>%
+      subset_samples(timeLabel == "D0")
+
+comparison = "INFECTED"
+
+family.keep = "Astroviridae"
+
+
+df.fisher <- tryfisherplot(ps0,"Cohort","Astroviridae",keep.genus,keep.species)
+
+plotFisher(df.fisher)
+
+tryfisherplot <- function(ps0,comparison,family.keep,genus.keep,species.keep) {
+
+
+family.fisher <- ps0 %>%
+                  tax_glom("Family") %>%
+                  speedyseq::psmelt() %>%
+                  filter(Family == family.keep) %>%
+                  droplevels() %>%
+                  mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+                  drop_na(PA) %>%
+                  group_by(Family) %>%
+                  summarise(PA.list = list(PA),
+                            comparison.list = list(!!as.name(comparison)),
+                             p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+                  mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+                  mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+  
+  
+  # transform to data table for later use
+  family.fisher <- data.table(family.fisher)
+    
+  family.fisher <- family.fisher[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {table(x,y)[2,1]/table(x,y)[1,1] -    
+                    table(x,y)[2,2]/table(x,y)[1,2]})]  %>%
+                    mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],levels(unlist(comparison.list))[2])) %>%
+                    rename("Level" = "Family") %>%
+                    mutate("Name" = "Family") %>%
+                    select(-c(PA.list,comparison.list)) %>%
+                    mutate(sig = ifelse(sig == "significant",driveBy,sig))
+  
+  
+
+  
+
+  genus.fisher <- ps0 %>%
+                  tax_glom("Genus") %>%
+                  speedyseq::psmelt() %>%
+                  filter(Family %in% family.keep) %>%
+                  filter(Genus %in% keep.genus) %>%
+                  droplevels() %>%
+                  mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+                  drop_na(PA) %>%
+                  mutate(Genus.modify = paste(Family,Genus,sep = "_")) %>%
+                  group_by(Genus.modify) %>%
+                  summarise(PA.list = list(PA),
+                            comparison.list = list(!!as.name(comparison)),
+                             p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+                  mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+                  mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+
+    # transform to data table for later use
+    genus.fisher <- data.table(genus.fisher)
+    
+    genus.fisher <- genus.fisher[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {table(x,y)[2,1]/table(x,y)[1,1] -    
+                    table(x,y)[2,2]/table(x,y)[1,2]})]  %>%
+                    mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],levels(unlist(comparison.list))[2])) %>%
+                    rename("Level" = "Genus.modify") %>%
+                    mutate("Name" = "Genus") %>%
+                    select(-c(PA.list,comparison.list)) %>%
+                    mutate(sig = ifelse(sig == "significant",driveBy,sig))
+
+
+  
+  
+    species.fisher <- ps0 %>%
+                  speedyseq::psmelt() %>%
+                  filter(Family %in% family.keep) %>%
+                  filter(Species %in% keep.species) %>%
+                  droplevels() %>%
+                  mutate(PA = ifelse(Abundance > 0,1,0)) %>%
+                  drop_na(PA) %>%
+                  mutate(Species.modify = paste(Family,Genus,Species,sep = "_")) %>%
+                  group_by(Species.modify) %>%
+                  summarise(PA.list = list(PA),
+                            comparison.list = list(!!as.name(comparison)),
+                             p.value = ifelse(length(unique(PA)) == 2,fisher.test(!!as.name(comparison),PA)$p.value,1)) %>%
+                  mutate(adj.p = p.adjust(p.value, method = "fdr")) %>% ## added fd
+                  mutate(sig = ifelse(p.value < 0.05,"significant","non-significant"))
+    
+     # transform to data table for later use
+    species.fisher <- data.table(species.fisher)
+    
+    species.fisher <- species.fisher[, fisherRatio := mapply(PA.list, comparison.list, FUN = function(x, y) {if(length(unique(x)) == 1){0} 
+                     else{table(x,y)[2,1]/table(x,y)[1,1] -    
+                    table(x,y)[2,2]/table(x,y)[1,2]}})]  %>%
+                    mutate(driveBy = ifelse(fisherRatio > 0,levels(unlist(comparison.list))[1],
+                                            ifelse(fisherRatio == 0, "equal",
+                                                   levels(unlist(comparison.list))[2]))) %>%
+                    rename("Level" = "Species.modify") %>%
+                    mutate("Name" = "Species") %>%
+                    select(-c(PA.list,comparison.list)) %>%
+                    mutate(sig = ifelse(sig == "significant",driveBy,sig))
+
+
+  
+  df.fisher <- rbind(family.fisher,genus.fisher,species.fisher)
+  
+  return(df.fisher)
+  
+}
+
+
+```
+
+
+```{r}
+
+df.Astro <- getFamilyDf(ps.aln.enriched,"Astroviridae","Genus",null,100)
+
+keep.genus <- unique(df.Astro$Genus)
+
+# get dataframe from the specific Family ---- Astroviridae
+df <- getFamilyDf(ps.aln.enriched,"Astroviridae","Species",keep.genus,100) 
+
+keep <- unique(df.Astro$Species)
+meta.list <- c("timeLabel" = "D365")
+plus = TRUE
+test.method = "wilcox.test"
+
+plotStats(df.Astro,ps.sp.clean,"Astroviridae",c("timeLabel" = "D365"),"Species","Cohort","wilcox.test","holm",0.05,FALSE)
+
+
+
+  # clean the table  
+  # mutate a new column named mean_rank use for later plot order
+  df.real <-  ps.sp.clean %>%
+              filter(Family == "Astroviridae") %>%
+              filter(Species %in% keep) %>%
+              droplevels() %>%
+              group_by_("Species") %>%
+              mutate(mean_rank = mean(Abundance)) %>%
+              ungroup()
+  
+  
+   
+  # subset the df to the cohort you are interested in
+  for (i in (1:length(meta.list))){
+
+           df.real <- df.real %>%
+                 subset(df.real[[names(meta.list)[i]]] == unname(meta.list)[i])
+  }
+  
+
+
+  # check if there are taxa needs remove (taxa with all 0s will lead to stats function failed)
+  df.check0 <- df.real %>%
+               group_by_("Species") %>%
+               summarise(sum(scaled_abundance_median)) %>%
+               rename("sum" = "sum(scaled_abundance_median)")
+  
+  
+  # check the taxa name that needs remove
+  # remove them to prevent future function failure
+  removeName <- df.check0 %>%
+                filter(sum == 0) %>%
+                select(1) %>%
+                deframe()
+  
+
+  # remove the all-0 taxa name from the dataset
+  df.real <- df.real %>%
+             filter(!(!!as.name("Species") %in% removeName)) 
+  
+  # check if all the taxa are 0s
+  # if all taxa are 0s in this cohort, function will fail
+  # print out a error message to terminate the function
+  if (sum(df.check0$sum) == 0){
+
+    stop("All 0 in this subset.")
+    
+   }
+  
+
+  # when plot has no enough space to show sd bar, you can choose to add some 
+  # space to the plot by "+1"(plus is TRUE) or not "+1"(plus is FALSE)
+  if (plus){
+    
+   # mutate a new column named log_scaled to include thelog10(scaled_abundance_median)
+   # and replace the -inf to 0 (if not, mean calculation would fail)
+   df.real <- df.real %>%
+                mutate(log_scaled = log10(scaled_abundance_median+1)) %>%
+                mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) 
+    
+  }else if(!plus){
+  # mutate a new column named log_scaled to include thelog10(scaled_abundance_median)
+  # and replace the -inf to 0 (if not, mean calculation would fail)
+  df.real <- df.real %>%
+                mutate(log_scaled = log10(scaled_abundance_median)) %>%
+                mutate_if(is.numeric, function(x) ifelse(is.infinite(x), 0, x)) 
+  
+  }
+  
+  
+  # make plot
+  p <- ggplot(df.real, aes(x = df.real[["Cohort"]], y = log_scaled)) +
+                        geom_jitter(size = 1.5, width = 0.2, alpha = 0.2) +
+                        facet_wrap(~fct_reorder(df.real[[tax_rank]], mean_rank, .desc = TRUE)) +
+                        labs(y = "Abundance (log10)", x ="")
+  
+  # add summary dot to the plot
+  p <- add_summary(data = df.real, p, "mean_sd", color = "red", size = 0.4)
+
+  
+  # calculate the mean and median values for each group
+  # pivot the table for later merging into the main stats table
+  df.mean.median <- df.real %>%
+         mutate("temp" = paste(!!as.name("Species"),!!as.name("Cohort"),sep = "_")) %>%
+         group_by(temp) %>%
+         summarise_at("log_scaled",funs(mean,median)) %>%
+         separate(temp, c(tax_rank,"group"),sep = "_") %>%
+         pivot_wider(names_from = "group",values_from = c("mean","median"))
+
+  # mutate a new column named "forStats" with log10(scaled_abundance_median),
+  # because we need to use the original value (without +1) to caclculate the stats
+  df.stats <- df.real %>%
+              mutate("forStats" = log10(scaled_abundance_median)) %>%
+              mutate_if(is.numeirc, )
+  
+  
+  
+  df.stats <- df.stats %>%
+                 group_by_("Species") %>%
+                 wilcox_test(forStats ~ Cohort) %>%
+                 adjust_pvalue(method = "holm") %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  # make formula for stats calculation
+  formula <- as.formula(paste0("forStats", "~", comparison))
+  
+  # choose stats method
+  if (test.method == "dunn.test"){
+
+    df.stats <- df.stats %>%
+                 group_by_(tax_rank) %>%
+                 dunn_test(formula, p.adjust.method = p.adj.method) %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+
+  }else if(test.method == "wilcox.test"){
+
+    df.stats <- df.stats %>%
+                 group_by_(tax_rank) %>%
+                 wilcox_test(formula) %>%
+                 adjust_pvalue(method = p.adj.method) %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+
+  }else if(test.method == "kruskal"){
+
+    df.stats <- df.stats %>%
+                 group_by_(tax_rank) %>%
+                 kruskal_test(formula) %>%
+                 adjust_pvalue(method = p.adj.method) %>%
+                 add_significance() %>%
+                 arrange(p.adj.signif)
+  }
+
+  
+      
+  # Quick summary of significance
+  # merging with the mean and median table
+   p.value <- df.stats %>%
+              arrange_(tax_rank) %>%
+              left_join(df.mean.median) %>%
+              rename("mean_1" = !!names(.[11]),"mean_2" = !!names(.[12]),"median_1" = !!names(.[13]),"median_2" = !!names(.[14])) %>%
+              select(-c(p,statistic,.y.)) %>%
+              rename("sigif" = "p.adj.signif")
+
+
+  # make the stats table as a plotable table
+  p.table <- tableGrob(p.value)
+
+  # arrange plot and table together
+  grid.arrange(p,p.table)
+  
+```
