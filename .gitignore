@@ -2,5 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
-./hecatomb_results/*
-./presentation/*
+.hepb_hecatomb_euk_viruses_redo.Rmd
+/hecatomb_results/*
+/presentation/*
