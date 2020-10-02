@@ -2,5 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
-/hecatomb_results/*
-/presentation/*
+./hecatomb_results/*
+./presentation/*
